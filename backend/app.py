@@ -13,15 +13,12 @@ import hashlib
 import hmac
 import json
 import base64
+import secrets
 
 load_dotenv(override=True)
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
-
-# Store OAuth flows in memory (using state as key)
-# In production, use Redis or database
-oauth_flows = {}
 
 # Enable CORS for frontend with cookies
 # Allow all origins during development, lock down in production if needed
@@ -125,6 +122,10 @@ def google_auth():
     print(f"[DEBUG] GOOGLE_CLIENT_ID: {GOOGLE_CLIENT_ID}")
     print(f"[DEBUG] Using GOOGLE_REDIRECT_URI: {GOOGLE_REDIRECT_URI}")
     
+    # Generate a state parameter (random string)
+    state = secrets.token_urlsafe(32)
+    print(f"[DEBUG] Generated state: {state}")
+    
     # Production only - use Railway public domain
     flow = google_auth_oauthlib.flow.Flow.from_client_config({
         "web": {
@@ -134,39 +135,67 @@ def google_auth():
             "token_uri": "https://oauth2.googleapis.com/token",
             "redirect_uris": [GOOGLE_REDIRECT_URI]
         }
-    }, scopes=SCOPES)
+    }, scopes=SCOPES, state=state)
 
     flow.redirect_uri = GOOGLE_REDIRECT_URI
-    authorization_url, state = flow.authorization_url(
+    authorization_url, generated_state = flow.authorization_url(
         access_type='offline',
         include_granted_scopes='true',
         prompt='consent'
     )
     
-    # Store the flow object in memory using state as key
-    oauth_flows[state] = flow
-    print(f"[DEBUG] State generated: {state}")
-    print(f"[DEBUG] Flow stored in oauth_flows")
     print(f"[DEBUG] Authorization URL: {authorization_url[:100]}...")
-    return redirect(authorization_url)
+    
+    # Create response to redirect to Google
+    response = redirect(authorization_url)
+    
+    # Store state in a secure cookie so we can verify it on callback
+    # This avoids the need for server-side session storage
+    response.set_cookie(
+        'oauth_state',
+        generated_state,
+        max_age=600,  # 10 minutes
+        secure=False,  # Allow HTTP for dev
+        httponly=True,  # Don't allow JS to read
+        samesite='Lax',
+        path='/'
+    )
+    
+    print(f"[DEBUG] State cookie set with value: {generated_state}")
+    
+    return response
 
 @app.route('/auth/google/callback')
 def google_callback():
-    state = request.args.get('state')
+    state_from_url = request.args.get('state')
     code = request.args.get('code')
     
     print(f"[DEBUG] Callback received")
-    print(f"[DEBUG] Received state: {state}")
+    print(f"[DEBUG] Received state: {state_from_url}")
     print(f"[DEBUG] Received code: {code[:50] if code else 'None'}...")
-    print(f"[DEBUG] Stored flows: {list(oauth_flows.keys())}")
     
-    if not state or state not in oauth_flows:
-        print(f"[ERROR] State not found in oauth_flows!")
+    # Verify state from cookie
+    state_from_cookie = request.cookies.get('oauth_state')
+    print(f"[DEBUG] Cookie state: {state_from_cookie}")
+    
+    if not state_from_url or not state_from_cookie or state_from_url != state_from_cookie:
+        print(f"[ERROR] State mismatch! URL state: {state_from_url}, Cookie state: {state_from_cookie}")
         return jsonify({"error": "Invalid state"}), 400
     
-    # Get the flow we stored
-    flow = oauth_flows.pop(state)  # Remove it from memory after use
-    print(f"[DEBUG] Flow retrieved from oauth_flows")
+    print(f"[DEBUG] State verified successfully")
+    
+    # Create flow again with the stored state
+    flow = google_auth_oauthlib.flow.Flow.from_client_config({
+        "web": {
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "redirect_uris": [GOOGLE_REDIRECT_URI]
+        }
+    }, scopes=SCOPES, state=state_from_url)
+    
+    flow.redirect_uri = GOOGLE_REDIRECT_URI
     
     # Complete the OAuth flow
     authorization_response = request.url
@@ -214,6 +243,9 @@ def google_callback():
         samesite='Lax',  # Allow same-site access
         path='/'
     )
+    
+    # Clear the state cookie
+    response.delete_cookie('oauth_state', path='/')
     
     return response
 
