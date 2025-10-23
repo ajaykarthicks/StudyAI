@@ -20,20 +20,22 @@ load_dotenv(override=True)
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
 
+# Get frontend URL for CORS
+FRONTEND_URL_FOR_CORS = os.getenv('FRONTEND_URL', 'https://studyai-gamma.vercel.app')
+
 # Enable CORS for frontend with cookies
-# Allow all origins during development, lock down in production if needed
+# IMPORTANT: Must specify actual origin, not *, when using credentials=True
 CORS(app, 
-     supports_credentials=True, 
-     resources={r"*": {
-         "origins": "*",  # Allow all origins
-         "methods": ["GET", "POST", "OPTIONS"],
-         "allow_headers": ["Content-Type"],
-         "expose_headers": ["Content-Type"]
-     }},
+     supports_credentials=True,
+     origins=[FRONTEND_URL_FOR_CORS],  # Specific origin (not * when using cookies)
+     methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
+     allow_headers=["Content-Type", "Authorization"],
+     expose_headers=["Content-Type", "Set-Cookie"],
      max_age=3600
 )
 
-print(f"[CORS] Allowed origins: * (All origins)")
+print(f"[CORS] Allowed origin: {FRONTEND_URL_FOR_CORS}")
+print(f"[CORS] supports_credentials=True (cookies enabled)")
 
 # Use server-side session ONLY for PDF storage (not auth)
 # Auth uses cookies only
@@ -280,8 +282,10 @@ def google_callback():
         print(f"[CALLBACK] Base64 encoded size: {len(user_b64)} bytes")
 
         # Redirect to Vercel frontend with dashboard flag
-        frontend_url = f'{FRONTEND_URL}/?dashboard=1'
-        print(f"[CALLBACK] Redirecting to: {frontend_url}")
+        # IMPORTANT: Also pass user data as query param for mobile compatibility
+        user_b64_urlsafe = base64.b64encode(user_json.encode()).decode()
+        frontend_url = f'{FRONTEND_URL}/?dashboard=1&auth={user_b64_urlsafe}'
+        print(f"[CALLBACK] Redirecting to: {frontend_url[:100]}...")
         print("="*80)
         print("[CALLBACK] ===== OAUTH CALLBACK SUCCEEDED - SETTING COOKIE & REDIRECTING =====")
         print("="*80)

@@ -22,8 +22,29 @@ document.addEventListener('DOMContentLoaded', () => {
   
   const urlParams = new URLSearchParams(window.location.search);
   
-  // If redirected from OAuth callback, go straight to dashboard
-  if (urlParams.has('dashboard')) {
+  // If redirected from OAuth callback with auth data, store it
+  if (urlParams.has('auth')) {
+    console.log('OAuth callback with auth data detected');
+    const authB64 = urlParams.get('auth');
+    try {
+      const authJson = atob(authB64);
+      const userData = JSON.parse(authJson);
+      console.log('Storing auth data from callback:', userData.email);
+      
+      // Store in localStorage for mobile compatibility
+      localStorage.setItem('user_data_backup', authJson);
+      
+      // Also try to trigger /me to ensure cookie is set
+      window.history.replaceState({}, document.title, "/");
+      setTimeout(() => {
+        checkAuthAndShowDashboard();
+      }, 300);
+    } catch (e) {
+      console.error('Failed to decode auth data:', e);
+      checkAuthAndShowDashboard();
+    }
+  } else if (urlParams.has('dashboard')) {
+    // Legacy: if just dashboard flag without auth
     console.log('OAuth callback detected - checking auth for dashboard');
     window.history.replaceState({}, document.title, "/");
     setTimeout(() => {
@@ -49,20 +70,54 @@ async function checkAuth() {
     
     if (response.ok) {
       const data = await response.json();
-      console.log('User authenticated:', data.user.email);
+      console.log('User authenticated via /me:', data.user.email);
       appState.isAuthenticated = true;
       appState.user = data.user;
       updateUserInfo();
       showPage('upload-page');
     } else {
-      console.log('Not authenticated - showing login');
-      appState.isAuthenticated = false;
-      showPage('landing-page');
+      // Fallback: check localStorage (for mobile)
+      const backupData = localStorage.getItem('user_data_backup');
+      if (backupData) {
+        try {
+          const user = JSON.parse(backupData);
+          console.log('User authenticated via localStorage:', user.email);
+          appState.isAuthenticated = true;
+          appState.user = user;
+          updateUserInfo();
+          showPage('upload-page');
+        } catch (e) {
+          console.error('Failed to parse backup auth:', e);
+          appState.isAuthenticated = false;
+          showPage('landing-page');
+        }
+      } else {
+        console.log('Not authenticated - showing login');
+        appState.isAuthenticated = false;
+        showPage('landing-page');
+      }
     }
   } catch (error) {
     console.error('Auth check error:', error);
-    appState.isAuthenticated = false;
-    showPage('landing-page');
+    
+    // Fallback: check localStorage
+    const backupData = localStorage.getItem('user_data_backup');
+    if (backupData) {
+      try {
+        const user = JSON.parse(backupData);
+        console.log('User authenticated via localStorage (after error):', user.email);
+        appState.isAuthenticated = true;
+        appState.user = user;
+        updateUserInfo();
+        showPage('upload-page');
+      } catch (e) {
+        appState.isAuthenticated = false;
+        showPage('landing-page');
+      }
+    } else {
+      appState.isAuthenticated = false;
+      showPage('landing-page');
+    }
   }
 }
 
@@ -78,20 +133,54 @@ async function checkAuthAndShowDashboard() {
     
     if (response.ok) {
       const data = await response.json();
-      console.log('Authentication successful:', data.user.email);
+      console.log('Authentication successful via /me:', data.user.email);
       appState.isAuthenticated = true;
       appState.user = data.user;
       updateUserInfo();
       showPage('dashboard');
     } else {
-      console.log('Authentication failed - showing login');
-      appState.isAuthenticated = false;
-      showPage('landing-page');
+      // Fallback: check localStorage (for mobile)
+      const backupData = localStorage.getItem('user_data_backup');
+      if (backupData) {
+        try {
+          const user = JSON.parse(backupData);
+          console.log('Authentication successful via localStorage:', user.email);
+          appState.isAuthenticated = true;
+          appState.user = user;
+          updateUserInfo();
+          showPage('dashboard');
+        } catch (e) {
+          console.error('Failed to parse backup auth:', e);
+          appState.isAuthenticated = false;
+          showPage('landing-page');
+        }
+      } else {
+        console.log('Authentication failed - showing login');
+        appState.isAuthenticated = false;
+        showPage('landing-page');
+      }
     }
   } catch (error) {
     console.error('Dashboard auth error:', error);
-    appState.isAuthenticated = false;
-    showPage('landing-page');
+    
+    // Fallback: check localStorage
+    const backupData = localStorage.getItem('user_data_backup');
+    if (backupData) {
+      try {
+        const user = JSON.parse(backupData);
+        console.log('Authentication successful via localStorage (after error):', user.email);
+        appState.isAuthenticated = true;
+        appState.user = user;
+        updateUserInfo();
+        showPage('dashboard');
+      } catch (e) {
+        appState.isAuthenticated = false;
+        showPage('landing-page');
+      }
+    } else {
+      appState.isAuthenticated = false;
+      showPage('landing-page');
+    }
   }
 }
 
@@ -104,6 +193,10 @@ function signInWithGoogle() {
 async function signOut() {
   try {
     await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
+    
+    // Clear localStorage backup
+    localStorage.removeItem('user_data_backup');
+    
     appState.isAuthenticated = false;
     appState.user = null;
     appState.chatHistory = [];
