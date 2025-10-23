@@ -164,14 +164,23 @@ def google_callback():
     session['user'] = user_info
 
     # Redirect to appropriate frontend based on origin
-    # Check referer header to determine if this came from localhost or production
-    referer = request.referrer or ''
-    if 'vercel.app' in referer or 'studyai-gamma.vercel.app' in referer:
-        frontend_url = 'https://studyai-gamma.vercel.app/?dashboard=1'
-    else:
-        frontend_url = 'http://localhost:3000/?dashboard=1'
+    # Default to production Vercel URL
+    FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://studyai-gamma.vercel.app')
     
+    # Check if there's a localhost origin from development
+    origin = request.headers.get('Origin', '')
+    referer = request.referrer or ''
+    
+    print(f"[DEBUG] Origin header: {origin}")
     print(f"[DEBUG] Referer: {referer}")
+    
+    # If the request came from localhost, redirect to localhost (development)
+    # Otherwise, use the production Vercel URL
+    if 'localhost' in origin or 'localhost' in referer or '127.0.0.1' in origin:
+        frontend_url = 'http://localhost:3000/?dashboard=1'
+    else:
+        frontend_url = f'{FRONTEND_URL}/?dashboard=1'
+    
     print(f"[DEBUG] Redirecting to: {frontend_url}")
     response = redirect(frontend_url)
     return response
