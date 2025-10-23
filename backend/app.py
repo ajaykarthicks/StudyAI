@@ -1,5 +1,5 @@
 import os
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '0'  # HTTPS only for production
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow HTTPS and HTTP
 
 from flask import Flask, request, jsonify, session, redirect, url_for
 from flask_cors import CORS
@@ -22,7 +22,7 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY')
 oauth_flows = {}
 
 # Enable CORS for frontend with cookies
-# Production only - Vercel frontend URL
+# Production URLs
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://studyai-gamma.vercel.app')
 CORS_ORIGINS = [FRONTEND_URL]
 
@@ -59,10 +59,8 @@ Session(app)
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 
-# Production only - use Railway public domain
-RAILWAY_PUBLIC_DOMAIN = os.getenv('RAILWAY_PUBLIC_DOMAIN')
-if not RAILWAY_PUBLIC_DOMAIN:
-    raise RuntimeError("RAILWAY_PUBLIC_DOMAIN environment variable is required for production")
+# Production - use Railway public domain, fallback to env var
+RAILWAY_PUBLIC_DOMAIN = os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_DOMAIN') or 'studyai-production.up.railway.app'
 
 BACKEND_URL = f"https://{RAILWAY_PUBLIC_DOMAIN}"
 GOOGLE_REDIRECT_URI = f"{BACKEND_URL}/auth/google/callback"
