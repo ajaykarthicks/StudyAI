@@ -123,7 +123,21 @@ def me():
 def google_auth():
     print("[DEBUG] /auth/google route called")
     print(f"[DEBUG] GOOGLE_CLIENT_ID: {GOOGLE_CLIENT_ID}")
-    print(f"[DEBUG] GOOGLE_REDIRECT_URI: {GOOGLE_REDIRECT_URI}")
+    
+    # Detect the backend URL from the incoming request
+    # This allows the same backend to work from different origins
+    if request.host_url.startswith('http://localhost') or request.host_url.startswith('http://127.0.0.1'):
+        # Local development
+        dynamic_redirect_uri = 'http://localhost:5000/auth/google/callback'
+    elif 'railway.app' in request.host_url or 'railway' in os.getenv('RAILWAY_PUBLIC_DOMAIN', ''):
+        # Production on Railway
+        dynamic_redirect_uri = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}/auth/google/callback"
+    else:
+        # Fallback to hardcoded GOOGLE_REDIRECT_URI
+        dynamic_redirect_uri = GOOGLE_REDIRECT_URI
+    
+    print(f"[DEBUG] Request host: {request.host_url}")
+    print(f"[DEBUG] Dynamic redirect URI: {dynamic_redirect_uri}")
     
     flow = google_auth_oauthlib.flow.Flow.from_client_config({
         "web": {
@@ -131,11 +145,11 @@ def google_auth():
             "client_secret": GOOGLE_CLIENT_SECRET,
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": [GOOGLE_REDIRECT_URI]
+            "redirect_uris": [dynamic_redirect_uri]
         }
     }, scopes=SCOPES)
 
-    flow.redirect_uri = GOOGLE_REDIRECT_URI
+    flow.redirect_uri = dynamic_redirect_uri
     authorization_url, state = flow.authorization_url(
         access_type='offline',
         include_granted_scopes='true',
@@ -145,7 +159,7 @@ def google_auth():
     # Store the flow object in memory using state as key
     oauth_flows[state] = flow
     print(f"[DEBUG] State generated: {state}")
-    print(f"[DEBUG] Flow stored in oauth_flows")
+    print(f"[DEBUG] Flow stored in oauth_flows with redirect_uri: {dynamic_redirect_uri}")
     print(f"[DEBUG] Authorization URL: {authorization_url[:100]}...")
     return redirect(authorization_url)
 
