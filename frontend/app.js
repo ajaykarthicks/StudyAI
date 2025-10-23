@@ -125,7 +125,7 @@ async function checkAuth() {
 
 async function checkAuthAndShowDashboard() {
   try {
-    console.log('OAuth callback - checking auth for dashboard...');
+    console.log('OAuth callback - checking auth for upload page...');
     const response = await fetch(`${API_BASE_URL}/me`, { 
       credentials: 'include',
       method: 'GET'
@@ -139,7 +139,7 @@ async function checkAuthAndShowDashboard() {
       appState.isAuthenticated = true;
       appState.user = data.user;
       updateUserInfo();
-      showPage('dashboard');
+      showPage('upload-page');  // Show upload page after login, not dashboard
     } else {
       // Fallback: check localStorage (for mobile)
       const backupData = localStorage.getItem('user_data_backup');
@@ -150,7 +150,7 @@ async function checkAuthAndShowDashboard() {
           appState.isAuthenticated = true;
           appState.user = user;
           updateUserInfo();
-          showPage('dashboard');
+          showPage('upload-page');  // Show upload page after login
         } catch (e) {
           console.error('Failed to parse backup auth:', e);
           appState.isAuthenticated = false;
@@ -174,7 +174,7 @@ async function checkAuthAndShowDashboard() {
         appState.isAuthenticated = true;
         appState.user = user;
         updateUserInfo();
-        showPage('dashboard');
+        showPage('upload-page');  // Show upload page after login
       } catch (e) {
         appState.isAuthenticated = false;
         showPage('landing-page');

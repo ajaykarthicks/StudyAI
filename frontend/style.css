@@ -526,6 +526,13 @@ body {
   justify-content: center;
   color: white;
   flex-shrink: 0;
+  pointer-events: auto;
+}
+
+.tool-icon i {
+  font-size: 1.5rem;
+  color: white;
+  pointer-events: none;
 }
 
 .tool-label {
@@ -994,12 +1001,20 @@ body {
   }
   
   .tool-icon {
-    width: 36px;
-    height: 36px;
-    font-size: 1rem;
+    width: 40px;
+    height: 40px;
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
   }
   
   .tool-label small {
+    display: none;
+  }
+  
+  .tool-label .tool-name {
     display: none;
   }
   
