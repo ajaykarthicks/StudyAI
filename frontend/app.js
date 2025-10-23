@@ -18,7 +18,8 @@ let appState = {
 document.addEventListener('DOMContentLoaded', () => {
   console.log('App initialized');
   console.log('API_BASE_URL: ' + API_BASE_URL);
-  console.log('API_BASE_URL:', API_BASE_URL);
+  console.log('Current cookies:', document.cookie);
+  console.log('LocalStorage user:', localStorage.getItem('study_hub_user'));
   
   const urlParams = new URLSearchParams(window.location.search);
   
@@ -41,6 +42,20 @@ document.addEventListener('DOMContentLoaded', () => {
 async function checkAuth() {
   try {
     console.log('Checking authentication status...');
+    
+    // First, check if user info is in localStorage or cookies
+    const userInfo = getUserInfo();
+    if (userInfo) {
+      console.log('User info found in localStorage/cookie:', userInfo);
+      appState.isAuthenticated = true;
+      appState.user = userInfo;
+      updateUserInfo();
+      showPage('upload-page');
+      return;
+    }
+    
+    // If not in local storage, check session via /me endpoint
+    console.log('No cached user info, checking /me endpoint...');
     const response = await fetch(`${API_BASE_URL}/me`, { 
       credentials: 'include',
       method: 'GET',
@@ -55,11 +70,13 @@ async function checkAuth() {
       console.log('User authenticated:', data.user);
       appState.isAuthenticated = true;
       appState.user = data.user;
+      localStorage.setItem('study_hub_user', JSON.stringify(data.user));
       updateUserInfo();
       showPage('upload-page');
     } else {
       console.log('User not authenticated');
       appState.isAuthenticated = false;
+      localStorage.removeItem('study_hub_user');
       showPage('landing-page');
     }
   } catch (error) {
@@ -72,6 +89,20 @@ async function checkAuth() {
 async function checkAuthAndShowDashboard() {
   try {
     console.log('Checking auth and showing dashboard...');
+    
+    // First, check if user info is in localStorage/cookies
+    const userInfo = getUserInfo();
+    if (userInfo) {
+      console.log('User authenticated from cached info:', userInfo);
+      appState.isAuthenticated = true;
+      appState.user = userInfo;
+      updateUserInfo();
+      showPage('dashboard');
+      return;
+    }
+    
+    // If not cached, check session via /me endpoint
+    console.log('No cached user info, checking /me endpoint...');
     const response = await fetch(`${API_BASE_URL}/me`, { 
       credentials: 'include',
       method: 'GET',
@@ -86,12 +117,14 @@ async function checkAuthAndShowDashboard() {
       console.log('User authenticated for dashboard:', data.user);
       appState.isAuthenticated = true;
       appState.user = data.user;
+      localStorage.setItem('study_hub_user', JSON.stringify(data.user));
       updateUserInfo();
       // Skip upload page and go directly to dashboard after OAuth callback
       showPage('dashboard');
     } else {
       console.log('User not authenticated for dashboard, showing landing');
       appState.isAuthenticated = false;
+      localStorage.removeItem('study_hub_user');
       showPage('landing-page');
     }
   } catch (error) {
@@ -99,6 +132,44 @@ async function checkAuthAndShowDashboard() {
     appState.isAuthenticated = false;
     showPage('landing-page');
   }
+}
+
+// Helper function to get cookie by name
+function getCookie(name) {
+  const nameEQ = name + "=";
+  const cookies = document.cookie.split(';');
+  for (let i = 0; i < cookies.length; i++) {
+    let cookie = cookies[i].trim();
+    if (cookie.indexOf(nameEQ) === 0) {
+      return cookie.substring(nameEQ.length);
+    }
+  }
+  return null;
+}
+
+// Helper function to get user info from any source
+function getUserInfo() {
+  // Check localStorage first (set by auth after successful callback)
+  const localStorageUser = localStorage.getItem('study_hub_user');
+  if (localStorageUser) {
+    try {
+      return JSON.parse(localStorageUser);
+    } catch (e) {
+      console.log('Failed to parse localStorage user:', e);
+    }
+  }
+  
+  // Check document cookies
+  const userCookie = getCookie('study_hub_user');
+  if (userCookie) {
+    try {
+      return JSON.parse(atob(userCookie));
+    } catch (e) {
+      console.log('Failed to parse user cookie:', e);
+    }
+  }
+  
+  return null;
 }
 
 function signInWithGoogle() {
@@ -113,6 +184,7 @@ async function signOut() {
     appState.isAuthenticated = false;
     appState.user = null;
     appState.chatHistory = [];
+    localStorage.removeItem('study_hub_user');
     showPage('landing-page');
   } catch (error) {
     console.error('Logout failed:', error);

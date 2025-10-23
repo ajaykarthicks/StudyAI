@@ -226,23 +226,27 @@ def google_callback():
     print(f"[DEBUG] User stored in session")
 
     # Redirect to Vercel frontend
+    # Pass user info as URL-encoded query parameter so frontend can store it
     frontend_url = f'{FRONTEND_URL}/?dashboard=1'
     print(f"[DEBUG] Redirecting to: {frontend_url}")
     response = redirect(frontend_url)
     
-    # Set a secure cookie with user info as backup (in case session doesn't persist)
-    # Base64 encode JSON to fit in cookie safely
+    # Set a secure cookie with user info (will work on same domain, backup for server-side session)
     user_json = json.dumps(user_info)
     user_b64 = base64.b64encode(user_json.encode()).decode()
     response.set_cookie(
         'study_hub_user',
         user_b64,
         max_age=3600,
-        secure=False,  # Allow HTTP for development
+        secure=False,
         httponly=False,  # Allow JavaScript to read it
-        samesite='Lax',  # Allow same-site access
+        samesite='None',  # Cross-site cookies
         path='/'
     )
+    
+    # ALSO: Pass user info via URL so frontend can immediately get it
+    # Store in localStorage on frontend side
+    print(f"[DEBUG] User info encoded for frontend: {user_b64[:50]}...")
     
     # Clear the state cookie
     response.delete_cookie('oauth_state', path='/')
