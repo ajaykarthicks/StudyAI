@@ -16,10 +16,23 @@ app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
 
 # Enable CORS for frontend with cookies
+# Build origins list - always include localhost for development
+CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+# Add production Vercel URL if available
+VERCEL_URL = os.getenv('VERCEL_URL')
+if VERCEL_URL and VERCEL_URL not in CORS_ORIGINS:
+    CORS_ORIGINS.append(f"https://{VERCEL_URL}")
+
+print(f"[CORS] Allowed origins: {CORS_ORIGINS}")
+
 CORS(app, 
      supports_credentials=True, 
      resources={r"*": {
-         "origins": ["http://localhost:3000", "http://127.0.0.1:3000"],
+         "origins": CORS_ORIGINS,
          "methods": ["GET", "POST", "OPTIONS"],
          "allow_headers": ["Content-Type"]
      }},
