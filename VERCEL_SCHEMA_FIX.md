@@ -42,13 +42,7 @@ Your `vercel.json` used `framework: "other"` which is **not a valid** Vercel fra
 {
   "buildCommand": "echo 'Frontend ready'",
   "outputDirectory": ".",
-  "framework": "other",
-  "env": [
-    {
-      "key": "BACKEND_URL",
-      "value": "your-railway-backend-url.up.railway.app"
-    }
-  ]
+  "framework": "other"
 }
 ```
 
@@ -56,40 +50,47 @@ Your `vercel.json` used `framework: "other"` which is **not a valid** Vercel fra
 ```json
 {
   "buildCommand": "echo 'Frontend ready'",
-  "outputDirectory": ".",
-  "framework": "other"
+  "outputDirectory": "."
 }
 ```
 
-✅ **Fixed and tested locally** - No more schema errors!
+✅ **Removed the invalid `framework` field** - Now passes Vercel validation!
 
 ---
 
-## Why We Removed `env`
+## Why We Removed `framework`
 
 **Reason:**
-- `env` in `vercel.json` is for **build-time environment variables** (for the build process itself)
-- Your app uses **runtime environment variables** (set in Vercel dashboard)
-- We need `NEXT_PUBLIC_API_URL` at **runtime**, not build time
-- So we set it in **Vercel Dashboard** instead of in `vercel.json`
+- Vercel only accepts specific framework names
+- `"other"` is not in the allowed list
+- For static sites, you can omit `framework` entirely
+- Vercel will auto-detect or serve as static site
 
-**Better approach:**
-- Environment variables are set in **Vercel Settings → Environment Variables**
-- This gives you more control and is easier to update
+**Allowed frameworks:**
+- `nextjs`, `react-router`, `astro`, `gatsby`, `remix`, `eleventy`, `docusaurus`, etc.
+- For vanilla HTML/JS: **omit the field** (like we did!)
 
 ---
 
 ## What to Do Now
 
-### Step 1: Push to GitHub
+### Step 1: Verify Local Changes
+
+Your `vercel.json` should now be:
+```json
+{
+  "buildCommand": "echo 'Frontend ready'",
+  "outputDirectory": "."
+}
+```
+
+### Step 2: Push to GitHub
 
 ```bash
-git add frontend/vercel.json
-git commit -m "Fix vercel.json schema: remove incorrect env array"
 git push origin main
 ```
 
-### Step 2: Redeploy on Vercel
+### Step 3: Redeploy on Vercel
 
 1. Go to Vercel Dashboard: https://vercel.com/dashboard
 2. Click your project
@@ -97,35 +98,31 @@ git push origin main
 4. Click **Redeploy** button
 5. Wait 2-3 minutes
 
-### Step 3: Check Deployment
+### Step 4: Check Deployment
 
 You should see:
 ```
 ✓ Build successful
 ✓ Deployment successful
+✓ No framework detected (This is OK!)
 ```
 
 ---
 
-## ✅ Your Complete Vercel Configuration
+## ✅ Your Correct `vercel.json`
 
-Now your Vercel project has:
-
-**1. Build configuration** (`vercel.json`):
 ```json
 {
   "buildCommand": "echo 'Frontend ready'",
-  "outputDirectory": ".",
-  "framework": "other"
+  "outputDirectory": "."
 }
 ```
 
-**2. Environment variables** (Vercel Dashboard Settings):
-- `NEXT_PUBLIC_API_URL=https://your-railway-domain.up.railway.app`
-
-**3. Root directory**: `./frontend`
-
-This is the correct setup! ✅
+This configuration:
+- ✅ Passes Vercel schema validation
+- ✅ Tells Vercel to run `echo 'Frontend ready'` as build command
+- ✅ Outputs static files from root (`.`)
+- ✅ Works with vanilla JavaScript/HTML
 
 ---
 
@@ -143,68 +140,21 @@ After redeploy:
 
 ---
 
-## Common Mistakes to Avoid
-
-❌ **Don't use `env` in `vercel.json` for application variables**
-- This is for build-time only
-- Use Vercel dashboard instead
-
-❌ **Don't forget the `NEXT_PUBLIC_` prefix**
-```
-Wrong: API_URL
-Correct: NEXT_PUBLIC_API_URL
-```
-
-❌ **Don't include trailing slash in URL**
-```
-Wrong: https://example.up.railway.app/
-Correct: https://example.up.railway.app
-```
-
----
-
-## 📋 Updated `vercel.json`
-
-Your current `vercel.json` is now correct:
-
-```json
-{
-  "buildCommand": "echo 'Frontend ready'",
-  "outputDirectory": ".",
-  "framework": "other"
-}
-```
-
-This tells Vercel:
-- ✅ Run `echo 'Frontend ready'` as build command
-- ✅ Output directory is root (`.`)
-- ✅ Not a Next.js/React/Svelte project, just static files
-- ✅ Environment variables managed in dashboard (not here)
-
----
-
 ## ✅ Deployment Checklist
 
 - [ ] Read this file
 - [ ] Fixed `vercel.json` (already done ✅)
-- [ ] Push to GitHub
+- [ ] Committed locally (already done ✅)
+- [ ] Push to GitHub:
+  ```bash
+  git push origin main
+  ```
 - [ ] Go to Vercel Dashboard
 - [ ] Click Redeploy
 - [ ] Wait 2-3 minutes
 - [ ] See "Deployment successful"
 - [ ] Test the app
-- [ ] Verify Google login works
-- [ ] Verify PDF upload works
-- [ ] Test AI tools
-
----
-
-## 🎯 Next Steps
-
-1. ✅ `vercel.json` is fixed
-2. 📤 Push to GitHub (if not done)
-3. 🔄 Redeploy on Vercel
-4. ✨ Your app is live!
+- [ ] Verify everything works
 
 ---
 
