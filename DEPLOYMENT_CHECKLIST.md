@@ -47,8 +47,10 @@ git push -u origin main
 - [ ] Select your `ai-smart-study-hub` repository
 - [ ] Set Root Directory: `./frontend`
 - [ ] After deployment, go to Settings → Environment Variables
-- [ ] Add: `NEXT_PUBLIC_API_URL=https://your-railway-url`
+- [ ] Add or Update: `NEXT_PUBLIC_API_URL=https://your-railway-url`
   - (Replace with your Railway URL from Step 2)
+  - If variable already exists, click Edit instead of Add
+  - See `VERCEL_ENV_FIX.md` if you get env variable error
 - [ ] Redeploy to apply env vars
 - [ ] Get your Vercel URL (e.g., `https://studyai.vercel.app`)
 - [ ] **SAVE this URL!**
