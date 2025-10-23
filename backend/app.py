@@ -163,9 +163,17 @@ def google_callback():
 
     session['user'] = user_info
 
-    # Redirect to frontend dashboard (use query param for simple static hosting)
-    # The session cookie will be set automatically during the redirect
-    response = redirect('http://localhost:3000/?dashboard=1')
+    # Redirect to appropriate frontend based on origin
+    # Check referer header to determine if this came from localhost or production
+    referer = request.referrer or ''
+    if 'vercel.app' in referer or 'studyai-gamma.vercel.app' in referer:
+        frontend_url = 'https://studyai-gamma.vercel.app/?dashboard=1'
+    else:
+        frontend_url = 'http://localhost:3000/?dashboard=1'
+    
+    print(f"[DEBUG] Referer: {referer}")
+    print(f"[DEBUG] Redirecting to: {frontend_url}")
+    response = redirect(frontend_url)
     return response
 
 @app.route('/auth/logout', methods=['POST'])
