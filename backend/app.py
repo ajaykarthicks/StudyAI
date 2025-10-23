@@ -35,15 +35,15 @@ CORS(app,
 
 print(f"[CORS] Allowed origins: * (All origins)")
 
-# Use server-side session to store data (avoids huge cookies)
+# Use server-side session ONLY for PDF storage (not auth)
+# Auth uses cookies only
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_PERMANENT'] = False
-# Allow cookies over HTTP for development and HTTPS for production
-app.config['SESSION_COOKIE_SECURE'] = False  # Allow HTTP for now
+app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # More permissive
-app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
-print(f"[Session] SECURE=False, SAMESITE=Lax (Development mode)")
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = 3600
+print(f"[Session] Enabled for PDF storage only - auth uses COOKIES")
 Session(app)
 
 # Google OAuth Configuration
@@ -98,22 +98,21 @@ def health():
 
 @app.route('/me')
 def me():
-    # Try to get user info from the Flask session cookie (most reliable)
-    user = session.get('user')
-    if user:
-        print(f"[DEBUG] User from session: {user.get('email')}")
-        return jsonify({"authenticated": True, "user": user})
-    
-    # Fallback: check for user_data cookie (contains user info directly)
+    # ONLY check for user_data cookie
     user_cookie = request.cookies.get('user_data')
+    print(f"[DEBUG] /me called - checking for user_data cookie")
+    
     if user_cookie:
         try:
-            user = json.loads(base64.b64decode(user_cookie))
-            print(f"[DEBUG] User from cookie: {user.get('email')}")
-            return jsonify({"authenticated": True, "user": user})
+            user_json = base64.b64decode(user_cookie).decode('utf-8')
+            user = json.loads(user_json)
+            print(f"[DEBUG] User from cookie: {user.get('email')} ✅")
+            return jsonify({"authenticated": True, "user": user}), 200
         except Exception as e:
             print(f"[DEBUG] Failed to decode user_data cookie: {e}")
+            return jsonify({"authenticated": False, "error": str(e)}), 400
     
+    print(f"[DEBUG] No user_data cookie found ❌")
     return jsonify({"authenticated": False}), 401
 
 @app.route('/auth/google')
@@ -220,30 +219,29 @@ def google_callback():
         print(f"[ERROR] Failed to get user info: {e}")
         return jsonify({"error": str(e)}), 400
 
-    # Store user info in session
-    session['user'] = user_info
-    session.modified = True
-    print(f"[DEBUG] User stored in session: {user_info.get('email')}")
+    # Store user info in ONLY the cookie (no session)
+    # Cookie is sent with every request automatically
+    user_json = json.dumps(user_info)
+    user_b64 = base64.b64encode(user_json.encode()).decode()
+    
+    print(f"[DEBUG] User info prepared for cookie: {user_info.get('email')}")
 
     # Redirect to Vercel frontend with dashboard flag
     frontend_url = f'{FRONTEND_URL}/?dashboard=1'
     print(f"[DEBUG] Redirecting to: {frontend_url}")
     response = redirect(frontend_url)
     
-    # Also set user_data cookie as backup (Base64 encoded JSON)
-    # This persists on the client side and doesn't depend on server memory
-    user_json = json.dumps(user_info)
-    user_b64 = base64.b64encode(user_json.encode()).decode()
+    # Set user_data cookie - THIS IS THE ONLY PLACE USER DATA IS STORED
     response.set_cookie(
         'user_data',
         user_b64,
         max_age=86400,  # 24 hours
         secure=False,   # Allow HTTP
         httponly=False, # Allow JS to read if needed
-        samesite='None', # Cross-site
+        samesite='None', # Cross-site (important for Vercel -> Railway)
         path='/'
     )
-    print(f"[DEBUG] User data cookie set")
+    print(f"[DEBUG] user_data cookie SET with {len(user_b64)} bytes")
     
     # Clear the state cookie after verification
     response.delete_cookie('oauth_state', path='/')
@@ -252,13 +250,16 @@ def google_callback():
 
 @app.route('/auth/logout', methods=['POST'])
 def logout():
-    session.clear()
-    print(f"[DEBUG] Session cleared")
+    print(f"[DEBUG] Logout called")
     
     from flask import make_response
     response = make_response(jsonify({"message": "Logged out"}))
-    response.delete_cookie('user_data', path='/')
+    
+    # Delete user_data cookie
+    response.delete_cookie('user_data', path='/', samesite='None')
     response.delete_cookie('oauth_state', path='/')
+    
+    print(f"[DEBUG] Cookies deleted")
     return response
 
 # ------------------------- PDF Processing -------------------------
