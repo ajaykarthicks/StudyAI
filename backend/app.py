@@ -13,11 +13,16 @@ import hashlib
 import hmac
 import json
 import secrets
+import base64
 
 load_dotenv(override=True)
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
+
+# Simple in-memory token store for authentication
+# Maps tokens to user info (can be replaced with Redis in production)
+auth_tokens = {}
 
 # Enable CORS for frontend with cookies
 # Allow all origins during development, lock down in production if needed
@@ -97,10 +102,21 @@ def health():
 
 @app.route('/me')
 def me():
+    # Check for auth token in cookie
+    token = request.cookies.get('auth_token')
+    
+    if token and token in auth_tokens:
+        user = auth_tokens[token]
+        print(f"[DEBUG] User from token: {user.get('email')}")
+        return jsonify({"authenticated": True, "user": user})
+    
+    # Also check Flask session (for backward compatibility)
     user = session.get('user')
-    if not user:
-        return jsonify({"authenticated": False}), 401
-    return jsonify({"authenticated": True, "user": user})
+    if user:
+        print(f"[DEBUG] User from session: {user.get('email')}")
+        return jsonify({"authenticated": True, "user": user})
+    
+    return jsonify({"authenticated": False}), 401
 
 @app.route('/auth/google')
 def google_auth():
@@ -210,11 +226,28 @@ def google_callback():
     session['user'] = user_info
     session.modified = True
     print(f"[DEBUG] User stored in session: {user_info.get('email')}")
+    
+    # Create an auth token and store it
+    auth_token = secrets.token_urlsafe(32)
+    auth_tokens[auth_token] = user_info
+    print(f"[DEBUG] Auth token created: {auth_token[:20]}...")
 
     # Redirect to Vercel frontend with dashboard flag
     frontend_url = f'{FRONTEND_URL}/?dashboard=1'
     print(f"[DEBUG] Redirecting to: {frontend_url}")
     response = redirect(frontend_url)
+    
+    # Set the auth token as a cookie
+    # Important: max_age=3600 (1 hour), allow cross-site access
+    response.set_cookie(
+        'auth_token',
+        auth_token,
+        max_age=3600,  # 1 hour
+        secure=False,  # Allow HTTP for development
+        httponly=False,  # Allow JavaScript to read if needed
+        samesite='None',  # Allow cross-site requests
+        path='/'
+    )
     
     # Clear the state cookie after verification
     response.delete_cookie('oauth_state', path='/')
@@ -223,8 +256,19 @@ def google_callback():
 
 @app.route('/auth/logout', methods=['POST'])
 def logout():
+    # Clear token from memory
+    token = request.cookies.get('auth_token')
+    if token and token in auth_tokens:
+        del auth_tokens[token]
+        print(f"[DEBUG] Token cleared: {token[:20]}...")
+    
     session.clear()
-    return jsonify({"message": "Logged out"})
+    print(f"[DEBUG] Session cleared")
+    
+    from flask import make_response
+    response = make_response(jsonify({"message": "Logged out"}))
+    response.delete_cookie('auth_token', path='/')
+    return response
 
 # ------------------------- PDF Processing -------------------------
 @app.route('/api/upload-pdf', methods=['POST'])
