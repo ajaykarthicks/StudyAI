@@ -138,52 +138,67 @@ def me():
 
 @app.route('/auth/google')
 def google_auth():
+    print("\n" + "="*60)
     print("[DEBUG] /auth/google route called")
-    print(f"[DEBUG] GOOGLE_CLIENT_ID: {GOOGLE_CLIENT_ID}")
+    print(f"[DEBUG] GOOGLE_CLIENT_ID: {'SET' if GOOGLE_CLIENT_ID else 'NOT SET'}")
     print(f"[DEBUG] Using GOOGLE_REDIRECT_URI: {GOOGLE_REDIRECT_URI}")
     
     # Generate a state parameter (random string)
     state = secrets.token_urlsafe(32)
     print(f"[DEBUG] Generated state: {state}")
     
-    # Production only - use Railway public domain
-    flow = google_auth_oauthlib.flow.Flow.from_client_config({
-        "web": {
-            "client_id": GOOGLE_CLIENT_ID,
-            "client_secret": GOOGLE_CLIENT_SECRET,
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": [GOOGLE_REDIRECT_URI]
-        }
-    }, scopes=SCOPES, state=state)
+    try:
+        # Production only - use Railway public domain
+        print(f"[DEBUG] Creating OAuth flow...")
+        flow = google_auth_oauthlib.flow.Flow.from_client_config({
+            "web": {
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [GOOGLE_REDIRECT_URI]
+            }
+        }, scopes=SCOPES, state=state)
 
-    flow.redirect_uri = GOOGLE_REDIRECT_URI
-    authorization_url, generated_state = flow.authorization_url(
-        access_type='offline',
-        include_granted_scopes='true',
-        prompt='consent'
-    )
-    
-    print(f"[DEBUG] Authorization URL: {authorization_url[:100]}...")
-    
-    # Create response to redirect to Google
-    response = redirect(authorization_url)
-    
-    # Store state in a secure cookie so we can verify it on callback
-    # This avoids the need for server-side session storage
-    response.set_cookie(
-        'oauth_state',
-        generated_state,
-        max_age=600,  # 10 minutes
-        secure=False,  # Allow HTTP for dev
-        httponly=True,  # Don't allow JS to read
-        samesite='Lax',
-        path='/'
-    )
-    
-    print(f"[DEBUG] State cookie set with value: {generated_state}")
-    
-    return response
+        flow.redirect_uri = GOOGLE_REDIRECT_URI
+        print(f"[DEBUG] Flow redirect_uri set to: {flow.redirect_uri}")
+        
+        authorization_url, generated_state = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true',
+            prompt='consent'
+        )
+        
+        print(f"[DEBUG] Authorization URL generated")
+        print(f"[DEBUG] Authorization URL: {authorization_url[:100]}...")
+        
+        # Create response to redirect to Google
+        response = redirect(authorization_url)
+        
+        # Store state in a secure cookie so we can verify it on callback
+        response.set_cookie(
+            'oauth_state',
+            generated_state,
+            max_age=600,  # 10 minutes
+            secure=False,  # Allow HTTP for dev
+            httponly=True,  # Don't allow JS to read
+            samesite='Lax',
+            path='/'
+        )
+        
+        print(f"[DEBUG] State cookie set: {generated_state[:20]}...")
+        print(f"[DEBUG] Redirecting to Google...")
+        print("="*60 + "\n")
+        
+        return response
+        
+    except Exception as e:
+        print(f"[ERROR] Exception in /auth/google: {e}")
+        print(f"[ERROR] Exception type: {type(e)}")
+        import traceback
+        print(f"[ERROR] Traceback:\n{traceback.format_exc()}")
+        print("="*60 + "\n")
+        return jsonify({"error": str(e), "type": type(e).__name__}), 500
 
 @app.route('/auth/google/callback')
 def google_callback():
