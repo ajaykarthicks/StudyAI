@@ -1,7 +1,7 @@
 import os
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow HTTP for local dev
 
-from flask import Flask, request, jsonify, session, redirect
+from flask import Flask, request, jsonify, session, redirect, url_for
 from flask_cors import CORS
 from flask_session import Session
 from dotenv import load_dotenv
@@ -9,11 +9,17 @@ import google_auth_oauthlib.flow
 from groq import Groq
 import PyPDF2
 import requests
+import hashlib
+import hmac
 
 load_dotenv(override=True)
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
+
+# Store OAuth flows in memory (using client_id as key for simplicity)
+# In production, use Redis or database
+oauth_flows = {}
 
 # Enable CORS for frontend with cookies
 # Build origins list - always include localhost for development
@@ -105,7 +111,6 @@ def me():
 def google_auth():
     print("[DEBUG] /auth/google route called")
     print(f"[DEBUG] GOOGLE_CLIENT_ID: {GOOGLE_CLIENT_ID}")
-    print(f"[DEBUG] GOOGLE_CLIENT_SECRET: {GOOGLE_CLIENT_SECRET[:20]}...")  # type: ignore
     print(f"[DEBUG] GOOGLE_REDIRECT_URI: {GOOGLE_REDIRECT_URI}")
     
     flow = google_auth_oauthlib.flow.Flow.from_client_config({
@@ -125,61 +130,68 @@ def google_auth():
         prompt='consent'
     )
     
-    print(f"[DEBUG] Authorization URL: {authorization_url[:100]}...")
+    # Store the flow object in memory using state as key
+    oauth_flows[state] = flow
     print(f"[DEBUG] State generated: {state}")
-    session['oauth_state'] = state
-    session.modified = True  # Force session to save
-    print(f"[DEBUG] State saved to session: {session.get('oauth_state')}")
+    print(f"[DEBUG] Flow stored in oauth_flows")
+    print(f"[DEBUG] Authorization URL: {authorization_url[:100]}...")
     return redirect(authorization_url)
 
 @app.route('/auth/google/callback')
 def google_callback():
-    saved_state = session.get('oauth_state')
-    request_state = request.args.get('state')
+    state = request.args.get('state')
+    code = request.args.get('code')
     
     print(f"[DEBUG] Callback received")
-    print(f"[DEBUG] Saved state: {saved_state}")
-    print(f"[DEBUG] Request state: {request_state}")
+    print(f"[DEBUG] Received state: {state}")
+    print(f"[DEBUG] Received code: {code[:50] if code else 'None'}...")
+    print(f"[DEBUG] Stored flows: {list(oauth_flows.keys())}")
     
-    # Create flow without state first, then set it
-    flow = google_auth_oauthlib.flow.Flow.from_client_config({
-        "web": {
-            "client_id": GOOGLE_CLIENT_ID,
-            "client_secret": GOOGLE_CLIENT_SECRET,
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": [GOOGLE_REDIRECT_URI]
-        }
-    }, scopes=SCOPES, state=saved_state)
-
-    flow.redirect_uri = GOOGLE_REDIRECT_URI
+    if not state or state not in oauth_flows:
+        print(f"[ERROR] State not found in oauth_flows!")
+        return jsonify({"error": "Invalid state"}), 400
+    
+    # Get the flow we stored
+    flow = oauth_flows.pop(state)  # Remove it from memory after use
+    print(f"[DEBUG] Flow retrieved from oauth_flows")
+    
+    # Complete the OAuth flow
     authorization_response = request.url
     print(f"[DEBUG] Authorization response URL: {authorization_response[:150]}...")
-    flow.fetch_token(authorization_response=authorization_response)
-
-    credentials = flow.credentials
+    
+    try:
+        flow.fetch_token(authorization_response=authorization_response)
+        credentials = flow.credentials
+        print(f"[DEBUG] Token fetched successfully")
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch token: {e}")
+        return jsonify({"error": str(e)}), 400
 
     # Get user info
-    user_info = requests.get(
-        'https://openidconnect.googleapis.com/v1/userinfo',
-        headers={'Authorization': f'Bearer {credentials.token}'}
-    ).json()
+    try:
+        user_info = requests.get(
+            'https://openidconnect.googleapis.com/v1/userinfo',
+            headers={'Authorization': f'Bearer {credentials.token}'}
+        ).json()
+        print(f"[DEBUG] User info retrieved: {user_info.get('email')}")
+    except Exception as e:
+        print(f"[ERROR] Failed to get user info: {e}")
+        return jsonify({"error": str(e)}), 400
 
+    # Store user info in session
     session['user'] = user_info
+    session.modified = True
+    print(f"[DEBUG] User stored in session")
 
     # Redirect to appropriate frontend based on origin
-    # Default to production Vercel URL
     FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://studyai-gamma.vercel.app')
     
-    # Check if there's a localhost origin from development
     origin = request.headers.get('Origin', '')
     referer = request.referrer or ''
     
     print(f"[DEBUG] Origin header: {origin}")
     print(f"[DEBUG] Referer: {referer}")
     
-    # If the request came from localhost, redirect to localhost (development)
-    # Otherwise, use the production Vercel URL
     if 'localhost' in origin or 'localhost' in referer or '127.0.0.1' in origin:
         frontend_url = 'http://localhost:3000/?dashboard=1'
     else:
