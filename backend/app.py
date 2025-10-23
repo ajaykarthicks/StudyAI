@@ -44,6 +44,10 @@ CORS(app,
 # Use server-side session to store PDF text (avoids huge cookies)
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_COOKIE_SECURE'] = False  # Allow HTTP for local dev
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Allow redirects from Google
+app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
 Session(app)
 
 # Google OAuth Configuration
@@ -118,13 +122,22 @@ def google_auth():
     )
     
     print(f"[DEBUG] Authorization URL: {authorization_url[:100]}...")
-    session['state'] = state
+    print(f"[DEBUG] State generated: {state}")
+    session['oauth_state'] = state
+    session.modified = True  # Force session to save
+    print(f"[DEBUG] State saved to session: {session.get('oauth_state')}")
     return redirect(authorization_url)
 
 @app.route('/auth/google/callback')
 def google_callback():
-    state = session.get('state')
-
+    saved_state = session.get('oauth_state')
+    request_state = request.args.get('state')
+    
+    print(f"[DEBUG] Callback received")
+    print(f"[DEBUG] Saved state: {saved_state}")
+    print(f"[DEBUG] Request state: {request_state}")
+    
+    # Create flow without state first, then set it
     flow = google_auth_oauthlib.flow.Flow.from_client_config({
         "web": {
             "client_id": GOOGLE_CLIENT_ID,
@@ -133,10 +146,11 @@ def google_callback():
             "token_uri": "https://oauth2.googleapis.com/token",
             "redirect_uris": [GOOGLE_REDIRECT_URI]
         }
-    }, scopes=SCOPES, state=state)
+    }, scopes=SCOPES, state=saved_state)
 
     flow.redirect_uri = GOOGLE_REDIRECT_URI
     authorization_response = request.url
+    print(f"[DEBUG] Authorization response URL: {authorization_response[:150]}...")
     flow.fetch_token(authorization_response=authorization_response)
 
     credentials = flow.credentials
