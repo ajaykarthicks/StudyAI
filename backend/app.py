@@ -1,7 +1,7 @@
 import os
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow HTTPS and HTTP
 
-from flask import Flask, request, jsonify, session, redirect, url_for
+from flask import Flask, request, jsonify, session, redirect, url_for, make_response
 from flask_cors import CORS
 from flask_session import Session
 from dotenv import load_dotenv
@@ -11,6 +11,8 @@ import PyPDF2
 import requests
 import hashlib
 import hmac
+import json
+import base64
 
 load_dotenv(override=True)
 
@@ -100,8 +102,21 @@ def health():
 @app.route('/me')
 def me():
     user = session.get('user')
+    
+    # If no user in session, try to get from cookie (backup)
+    if not user:
+        user_cookie = request.cookies.get('study_hub_user')
+        if user_cookie:
+            try:
+                user_json = base64.b64decode(user_cookie).decode()
+                user = json.loads(user_json)
+                print(f"[DEBUG] User retrieved from cookie: {user.get('email')}")
+            except Exception as e:
+                print(f"[ERROR] Failed to decode user cookie: {e}")
+    
     if not user:
         return jsonify({"authenticated": False}), 401
+    
     return jsonify({"authenticated": True, "user": user})
 
 @app.route('/auth/google')
@@ -185,12 +200,29 @@ def google_callback():
     frontend_url = f'{FRONTEND_URL}/?dashboard=1'
     print(f"[DEBUG] Redirecting to: {frontend_url}")
     response = redirect(frontend_url)
+    
+    # Set a secure cookie with user info as backup (in case session doesn't persist)
+    # Base64 encode JSON to fit in cookie safely
+    user_json = json.dumps(user_info)
+    user_b64 = base64.b64encode(user_json.encode()).decode()
+    response.set_cookie(
+        'study_hub_user',
+        user_b64,
+        max_age=3600,
+        secure=False,  # Allow HTTP for development
+        httponly=False,  # Allow JavaScript to read it
+        samesite='Lax',  # Allow same-site access
+        path='/'
+    )
+    
     return response
 
 @app.route('/auth/logout', methods=['POST'])
 def logout():
     session.clear()
-    return jsonify({"message": "Logged out"})
+    response = make_response(jsonify({"message": "Logged out"}))
+    response.delete_cookie('study_hub_user', path='/')
+    return response
 
 # ------------------------- PDF Processing -------------------------
 @app.route('/api/upload-pdf', methods=['POST'])
