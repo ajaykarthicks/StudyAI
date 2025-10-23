@@ -6,6 +6,15 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Allow text selection in input fields */
+input, textarea, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 :root {
@@ -50,6 +59,16 @@ body {
   color: var(--text-primary);
   line-height: 1.6;
   overflow-x: hidden;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* Mobile-specific scrolling */
+.page.active,
+.chat-history,
+.content-area,
+.sidebar,
+.tools-menu {
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ============================================
@@ -829,7 +848,7 @@ body {
 }
 
 /* ============================================
-   RESPONSIVE
+   RESPONSIVE - MOBILE FIRST
    ============================================ */
 
 @media (max-width: 1024px) {
@@ -852,18 +871,104 @@ body {
 }
 
 @media (max-width: 768px) {
+  /* Root sizing for mobile */
+  :root {
+    --spacing-lg: 1rem;
+    --spacing-2xl: 1.5rem;
+  }
+  
+  body {
+    font-size: 16px; /* Prevent zoom on input focus */
+    padding: 0; /* Remove safe-area on body, use on individual elements */
+  }
+  
+  /* Page layout */
+  .page.active {
+    height: 100dvh; /* Use dynamic viewport height for mobile */
+    flex-direction: column;
+  }
+  
+  #landing-page {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  
+  #dashboard {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  /* Landing page */
+  .landing-container {
+    grid-template-columns: 1fr;
+    max-width: 100%;
+    padding: var(--spacing-lg);
+    gap: var(--spacing-lg);
+  }
+  
+  .landing-title {
+    font-size: 2rem;
+  }
+  
+  .landing-subtitle {
+    font-size: 1.1rem;
+  }
+  
+  .landing-visual {
+    display: none;
+  }
+  
+  /* Navbar */
+  .navbar {
+    padding: var(--spacing-md) var(--spacing-lg);
+    padding-top: max(var(--spacing-md), env(safe-area-inset-top));
+    padding-right: max(var(--spacing-lg), env(safe-area-inset-right));
+    padding-bottom: var(--spacing-md);
+    padding-left: max(var(--spacing-lg), env(safe-area-inset-left));
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+  }
+  
+  .navbar-left {
+    gap: var(--spacing-md);
+    flex: 1;
+    min-width: 0;
+  }
+  
+  .logo-small {
+    font-size: 1rem;
+  }
+  
+  .file-info {
+    display: none;
+  }
+  
+  .navbar-right {
+    gap: var(--spacing-md);
+  }
+  
+  .user-info-header {
+    display: none;
+  }
+  
+  /* Dashboard */
   .dashboard-container {
     grid-template-columns: 1fr;
     height: auto;
   }
   
+  /* Sidebar */
   .sidebar {
     border-right: none;
     border-bottom: 1px solid var(--border);
     flex-direction: row;
     overflow-x: auto;
     overflow-y: hidden;
-    max-height: 100px;
+    max-height: auto;
+    padding: var(--spacing-md);
+    padding-left: max(var(--spacing-md), env(safe-area-inset-left));
+    padding-right: max(var(--spacing-md), env(safe-area-inset-right));
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
   }
   
   .sidebar-header {
@@ -872,19 +977,168 @@ body {
   
   .tools-menu {
     flex-direction: row;
+    gap: var(--spacing-md);
+    flex: 1;
+    overflow-x: auto;
   }
   
-  .content-area {
-    padding: var(--spacing-lg);
-  }
-  
-  .button-google {
-    width: 100%;
+  .tool-menu-item {
+    padding: var(--spacing-md);
+    white-space: nowrap;
+    min-width: max-content;
+    flex-shrink: 0;
+    min-height: 50px;
+    display: flex;
+    align-items: center;
     justify-content: center;
   }
   
+  .tool-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
+  }
+  
+  .tool-label small {
+    display: none;
+  }
+  
+  .tool-menu-item i:last-child {
+    display: none;
+  }
+  
+  .sidebar-footer {
+    display: none;
+  }
+  
+  /* Content area */
+  .content-area {
+    padding: var(--spacing-lg);
+    padding-right: max(var(--spacing-lg), env(safe-area-inset-right));
+    padding-bottom: max(var(--spacing-lg), env(safe-area-inset-bottom));
+    padding-left: max(var(--spacing-lg), env(safe-area-inset-left));
+    gap: var(--spacing-md);
+  }
+  
+  .content-header h2 {
+    font-size: 1.4rem;
+    gap: var(--spacing-sm);
+  }
+  
+  /* Buttons */
+  .button-google {
+    width: 100%;
+    justify-content: center;
+    padding: var(--spacing-lg);
+    font-size: 1rem;
+    min-height: 48px; /* Touch target */
+  }
+  
+  .button-send {
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    min-height: 48px;
+  }
+  
+  .button-generate {
+    padding: var(--spacing-md) var(--spacing-lg);
+    min-height: 48px; /* Touch target */
+    font-size: 0.95rem;
+  }
+  
+  .button-upload {
+    min-height: 48px;
+  }
+  
+  /* Chat */
   .chat-container {
-    height: auto;
+    height: 55vh;
+    max-height: 65vh;
+    border-radius: var(--radius-lg);
+  }
+  
+  .chat-bubble {
+    max-width: 85%;
+    padding: var(--spacing-md);
+    font-size: 0.95rem;
+  }
+  
+  .chat-history {
+    padding: var(--spacing-md);
+    gap: var(--spacing-sm);
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .chat-input-area {
+    padding: var(--spacing-md);
+    gap: var(--spacing-sm);
+  }
+  
+  .chat-input {
+    padding: var(--spacing-md);
+    font-size: 1rem;
+    min-height: 44px; /* Touch target */
+  }
+  
+  /* Tool controls */
+  .tool-controls {
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+  
+  .control-group {
+    width: 100%;
+  }
+  
+  .control-group input {
+    width: 100%;
+    min-height: 44px; /* Touch target */
+  }
+  
+  .button-generate {
+    width: 100%;
+  }
+  
+  /* Result box */
+  .result-box {
+    min-height: 200px;
+    max-height: 400px;
+    padding: var(--spacing-md);
+    font-size: 0.9rem;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Upload box */
+  .upload-box {
+    max-width: 100%;
+    padding: var(--spacing-lg);
+  }
+  
+  .file-input-label {
+    padding: var(--spacing-lg);
+  }
+  
+  .upload-icon {
+    font-size: 3rem;
+  }
+  
+  .upload-box h2 {
+    font-size: 1.4rem;
+  }
+  
+  /* Tool cards */
+  .tools-grid {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-md);
+  }
+  
+  /* Input fields */
+  input[type="text"],
+  input[type="number"] {
+    min-height: 44px; /* Touch target */
+    font-size: 1rem;
+    padding: var(--spacing-md);
   }
 }
 
