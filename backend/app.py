@@ -22,21 +22,11 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY')
 oauth_flows = {}
 
 # Enable CORS for frontend with cookies
-# Production URLs
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://studyai-gamma.vercel.app')
-CORS_ORIGINS = [FRONTEND_URL]
-
-# Add additional Vercel URLs from environment if provided
-VERCEL_URL = os.getenv('VERCEL_URL')
-if VERCEL_URL and f"https://{VERCEL_URL}" not in CORS_ORIGINS:
-    CORS_ORIGINS.append(f"https://{VERCEL_URL}")
-
-print(f"[CORS] Allowed origins: {CORS_ORIGINS}")
-
+# Allow all origins during development, lock down in production if needed
 CORS(app, 
      supports_credentials=True, 
      resources={r"*": {
-         "origins": CORS_ORIGINS,
+         "origins": "*",  # Allow all origins
          "methods": ["GET", "POST", "OPTIONS"],
          "allow_headers": ["Content-Type"],
          "expose_headers": ["Content-Type"]
@@ -44,20 +34,23 @@ CORS(app,
      max_age=3600
 )
 
+print(f"[CORS] Allowed origins: * (All origins)")
+
 # Use server-side session to store data (avoids huge cookies)
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_PERMANENT'] = False
-# Production HTTPS only
-app.config['SESSION_COOKIE_SECURE'] = True  # HTTPS required
+# Allow cookies over HTTP for development and HTTPS for production
+app.config['SESSION_COOKIE_SECURE'] = False  # Allow HTTP for now
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Cross-site cookies required
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # More permissive
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
-print(f"[Session] SECURE=True, SAMESITE=None (Production HTTPS)")
+print(f"[Session] SECURE=False, SAMESITE=Lax (Development mode)")
 Session(app)
 
 # Google OAuth Configuration
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://studyai-gamma.vercel.app')
 
 # Production - use Railway public domain, fallback to env var
 RAILWAY_PUBLIC_DOMAIN = os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_DOMAIN') or 'studyai-production.up.railway.app'
