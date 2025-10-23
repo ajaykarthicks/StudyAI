@@ -1,6 +1,4 @@
-const API_BASE_URL = window.location.hostname === 'localhost' 
-  ? 'http://localhost:5000' 
-  : 'https://studyai-production.up.railway.app';
+const API_BASE_URL = 'https://studyai-production.up.railway.app';
 
 // ============================================
 // STATE MANAGEMENT
@@ -19,6 +17,7 @@ let appState = {
 
 document.addEventListener('DOMContentLoaded', () => {
   console.log('App initialized');
+  console.log('API_BASE_URL: ' + API_BASE_URL);
   console.log('API_BASE_URL:', API_BASE_URL);
   
   const urlParams = new URLSearchParams(window.location.search);

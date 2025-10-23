@@ -1,5 +1,5 @@
 import os
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow HTTP for local dev
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '0'  # HTTPS only for production
 
 from flask import Flask, request, jsonify, session, redirect, url_for
 from flask_cors import CORS
@@ -17,19 +17,16 @@ load_dotenv(override=True)
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
 
-# Store OAuth flows in memory (using client_id as key for simplicity)
+# Store OAuth flows in memory (using state as key)
 # In production, use Redis or database
 oauth_flows = {}
 
 # Enable CORS for frontend with cookies
-# Build origins list - always include localhost for development
-CORS_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://studyai-gamma.vercel.app",
-]
+# Production only - Vercel frontend URL
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://studyai-gamma.vercel.app')
+CORS_ORIGINS = [FRONTEND_URL]
 
-# Add production Vercel URL if available from environment
+# Add additional Vercel URLs from environment if provided
 VERCEL_URL = os.getenv('VERCEL_URL')
 if VERCEL_URL and f"https://{VERCEL_URL}" not in CORS_ORIGINS:
     CORS_ORIGINS.append(f"https://{VERCEL_URL}")
@@ -47,34 +44,31 @@ CORS(app,
      max_age=3600
 )
 
-# Use server-side session to store PDF text (avoids huge cookies)
+# Use server-side session to store data (avoids huge cookies)
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_PERMANENT'] = False
-# For production (HTTPS), set SESSION_COOKIE_SECURE = True
-# For development (HTTP), it's set to False
-IS_PRODUCTION = os.getenv('ENVIRONMENT', '').lower() == 'production' or 'railway' in os.getenv('RAILWAY_STATIC_URL', '')
-app.config['SESSION_COOKIE_SECURE'] = IS_PRODUCTION  # True in production, False in dev
+# Production HTTPS only
+app.config['SESSION_COOKIE_SECURE'] = True  # HTTPS required
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'None' if IS_PRODUCTION else 'Lax'  # 'None' required for cross-site in production
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Cross-site cookies required
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
-print(f"[Session] SECURE={app.config['SESSION_COOKIE_SECURE']}, SAMESITE={app.config['SESSION_COOKIE_SAMESITE']}")
+print(f"[Session] SECURE=True, SAMESITE=None (Production HTTPS)")
 Session(app)
 
 # Google OAuth Configuration
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 
-# Determine backend URL for OAuth redirect (changes based on environment)
-# If running on Railway, use the Railway URL; otherwise use localhost for dev
-if os.getenv('RAILWAY_PUBLIC_DOMAIN'):
-    # Running on Railway - use the public domain
-    BACKEND_URL = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}"
-else:
-    # Development - use localhost
-    BACKEND_URL = 'http://localhost:5000'
+# Production only - use Railway public domain
+RAILWAY_PUBLIC_DOMAIN = os.getenv('RAILWAY_PUBLIC_DOMAIN')
+if not RAILWAY_PUBLIC_DOMAIN:
+    raise RuntimeError("RAILWAY_PUBLIC_DOMAIN environment variable is required for production")
 
+BACKEND_URL = f"https://{RAILWAY_PUBLIC_DOMAIN}"
 GOOGLE_REDIRECT_URI = f"{BACKEND_URL}/auth/google/callback"
+
 print(f"[Init] BACKEND_URL: {BACKEND_URL}")
+print(f"[Init] FRONTEND_URL: {FRONTEND_URL}")
 print(f"[Init] GOOGLE_REDIRECT_URI: {GOOGLE_REDIRECT_URI}")
 
 # Groq client (LLM-as-a-service)
@@ -123,33 +117,20 @@ def me():
 def google_auth():
     print("[DEBUG] /auth/google route called")
     print(f"[DEBUG] GOOGLE_CLIENT_ID: {GOOGLE_CLIENT_ID}")
+    print(f"[DEBUG] Using GOOGLE_REDIRECT_URI: {GOOGLE_REDIRECT_URI}")
     
-    # Detect the backend URL from the incoming request
-    # This allows the same backend to work from different origins
-    if request.host_url.startswith('http://localhost') or request.host_url.startswith('http://127.0.0.1'):
-        # Local development
-        dynamic_redirect_uri = 'http://localhost:5000/auth/google/callback'
-    elif 'railway.app' in request.host_url or 'railway' in os.getenv('RAILWAY_PUBLIC_DOMAIN', ''):
-        # Production on Railway
-        dynamic_redirect_uri = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}/auth/google/callback"
-    else:
-        # Fallback to hardcoded GOOGLE_REDIRECT_URI
-        dynamic_redirect_uri = GOOGLE_REDIRECT_URI
-    
-    print(f"[DEBUG] Request host: {request.host_url}")
-    print(f"[DEBUG] Dynamic redirect URI: {dynamic_redirect_uri}")
-    
+    # Production only - use Railway public domain
     flow = google_auth_oauthlib.flow.Flow.from_client_config({
         "web": {
             "client_id": GOOGLE_CLIENT_ID,
             "client_secret": GOOGLE_CLIENT_SECRET,
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": [dynamic_redirect_uri]
+            "redirect_uris": [GOOGLE_REDIRECT_URI]
         }
     }, scopes=SCOPES)
 
-    flow.redirect_uri = dynamic_redirect_uri
+    flow.redirect_uri = GOOGLE_REDIRECT_URI
     authorization_url, state = flow.authorization_url(
         access_type='offline',
         include_granted_scopes='true',
@@ -159,7 +140,7 @@ def google_auth():
     # Store the flow object in memory using state as key
     oauth_flows[state] = flow
     print(f"[DEBUG] State generated: {state}")
-    print(f"[DEBUG] Flow stored in oauth_flows with redirect_uri: {dynamic_redirect_uri}")
+    print(f"[DEBUG] Flow stored in oauth_flows")
     print(f"[DEBUG] Authorization URL: {authorization_url[:100]}...")
     return redirect(authorization_url)
 
@@ -209,20 +190,8 @@ def google_callback():
     session.modified = True
     print(f"[DEBUG] User stored in session")
 
-    # Redirect to appropriate frontend based on origin
-    FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://studyai-gamma.vercel.app')
-    
-    origin = request.headers.get('Origin', '')
-    referer = request.referrer or ''
-    
-    print(f"[DEBUG] Origin header: {origin}")
-    print(f"[DEBUG] Referer: {referer}")
-    
-    if 'localhost' in origin or 'localhost' in referer or '127.0.0.1' in origin:
-        frontend_url = 'http://localhost:3000/?dashboard=1'
-    else:
-        frontend_url = f'{FRONTEND_URL}/?dashboard=1'
-    
+    # Redirect to Vercel frontend
+    frontend_url = f'{FRONTEND_URL}/?dashboard=1'
     print(f"[DEBUG] Redirecting to: {frontend_url}")
     response = redirect(frontend_url)
     return response
