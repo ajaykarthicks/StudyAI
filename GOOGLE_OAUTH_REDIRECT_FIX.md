@@ -1,13 +1,16 @@
-# Google OAuth Redirect URI Fix
+# Google OAuth Redirect URI Fix - Multi-Origin Support
 
 ## Problem
-When logging in from Vercel (production), Google was trying to redirect to `http://localhost:5000/auth/google/callback`, which:
-1. Doesn't exist (localhost doesn't resolve from internet)
-2. Causes "Invalid state" error because the state is generated on Railway but localhost isn't listening
-3. User sees error in browser
+When logging in from different sources (phone, desktop, production), users got "Invalid state" error after selecting Gmail. 
 
-## Root Cause
-The `GOOGLE_REDIRECT_URI` was hardcoded to `http://localhost:5000` in the .env file.
+**Root Causes:**
+1. Hardcoded `GOOGLE_REDIRECT_URI` didn't match incoming request origin
+2. Phone on local network → different IP address → different redirect URL
+3. Production on Railway → different domain → different redirect URL
+4. Google OAuth requires redirect URI to match EXACTLY what's registered in Google Cloud Console
+
+## Solution
+Implemented **dynamic redirect URI detection** - the backend automatically detects which origin is making the request and uses the correct callback URL.
 
 ## Solution
 
