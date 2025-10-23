@@ -202,40 +202,44 @@ def google_auth():
 
 @app.route('/auth/google/callback')
 def google_callback():
-    print("\n" + "="*80)
-    print("[CALLBACK] ===== GOOGLE OAUTH CALLBACK RECEIVED =====")
-    print(f"[CALLBACK] Request URL: {request.url}")
-    print(f"[CALLBACK] Request Headers: {dict(request.headers)}")
-    print(f"[CALLBACK] Cookies: {dict(request.cookies)}")
-    
-    state_from_url = request.args.get('state')
-    code = request.args.get('code')
-    error_from_url = request.args.get('error')
-    
-    print(f"[CALLBACK] State from URL: {state_from_url}")
-    print(f"[CALLBACK] Code from URL: {code[:30] if code else 'NONE'}...")
-    print(f"[CALLBACK] Error from URL: {error_from_url}")
-    
-    # Verify state from cookie
-    state_from_cookie = request.cookies.get('oauth_state')
-    print(f"[CALLBACK] State from cookie: {state_from_cookie}")
-    
-    if error_from_url:
-        print(f"[ERROR] Google returned error: {error_from_url}")
-        return jsonify({"error": f"Google OAuth error: {error_from_url}"}), 400
-    
-    if not state_from_url or not state_from_cookie or state_from_url != state_from_cookie:
-        print(f"[ERROR] State mismatch!")
-        print(f"  - URL state: {state_from_url}")
-        print(f"  - Cookie state: {state_from_cookie}")
-        print(f"  - Match: {state_from_url == state_from_cookie}")
-        return jsonify({"error": "Invalid state"}), 400
-    
-    print(f"[CALLBACK] ✅ State verified successfully")
-    
-    # Create flow again with the stored state
-    print(f"[CALLBACK] Creating OAuth flow...")
     try:
+        print("\n" + "="*80)
+        print("[CALLBACK] ===== GOOGLE OAUTH CALLBACK RECEIVED =====")
+        print(f"[CALLBACK] Request URL: {request.url}")
+        print(f"[CALLBACK] Cookies: {dict(request.cookies)}")
+        
+        state_from_url = request.args.get('state')
+        code = request.args.get('code')
+        error_from_url = request.args.get('error')
+        
+        print(f"[CALLBACK] State from URL: {state_from_url[:20] if state_from_url else 'NONE'}...")
+        print(f"[CALLBACK] Code from URL: {code[:30] if code else 'NONE'}...")
+        print(f"[CALLBACK] Error from URL: {error_from_url}")
+        
+        # Check for Google error first
+        if error_from_url:
+            print(f"[ERROR] Google returned error: {error_from_url}")
+            return jsonify({"error": f"Google OAuth error: {error_from_url}"}), 400
+        
+        if not code:
+            print(f"[ERROR] No authorization code received from Google!")
+            return jsonify({"error": "No authorization code"}), 400
+        
+        # Verify state from cookie
+        state_from_cookie = request.cookies.get('oauth_state')
+        print(f"[CALLBACK] State from cookie: {state_from_cookie[:20] if state_from_cookie else 'NONE'}...")
+        
+        if not state_from_url or not state_from_cookie or state_from_url != state_from_cookie:
+            print(f"[ERROR] State mismatch!")
+            print(f"  - URL state: {state_from_url}")
+            print(f"  - Cookie state: {state_from_cookie}")
+            print(f"  - Match: {state_from_url == state_from_cookie}")
+            return jsonify({"error": "Invalid state"}), 400
+        
+        print(f"[CALLBACK] ✅ State verified successfully")
+        
+        # Create flow again with the stored state
+        print(f"[CALLBACK] Creating OAuth flow...")
         flow = google_auth_oauthlib.flow.Flow.from_client_config({
             "web": {
                 "client_id": GOOGLE_CLIENT_ID,
@@ -248,80 +252,69 @@ def google_callback():
 
         flow.redirect_uri = GOOGLE_REDIRECT_URI
         print(f"[CALLBACK] ✅ OAuth flow created")
-    except Exception as e:
-        print(f"[ERROR] Failed to create OAuth flow: {e}")
-        import traceback
-        print(f"[ERROR] {traceback.format_exc()}")
-        return jsonify({"error": f"Flow creation failed: {str(e)}"}), 400
-    
-    # Complete the OAuth flow
-    print(f"[CALLBACK] Fetching token...")
-    authorization_response = request.url
-    print(f"[CALLBACK] Authorization response URL: {authorization_response[:150]}...")
-    
-    try:
+        
+        # Complete the OAuth flow
+        print(f"[CALLBACK] Fetching token...")
+        authorization_response = request.url
+        print(f"[CALLBACK] Authorization response URL: {authorization_response[:150]}...")
+        
         flow.fetch_token(authorization_response=authorization_response)
         credentials = flow.credentials
         print(f"[CALLBACK] ✅ Token fetched successfully")
         print(f"[CALLBACK] Token expires: {credentials.expiry}")
-    except Exception as e:
-        print(f"[ERROR] Failed to fetch token: {e}")
-        import traceback
-        print(f"[ERROR] Traceback:\n{traceback.format_exc()}")
-        return jsonify({"error": f"Token fetch failed: {str(e)}"}), 400
 
-    # Get user info
-    print(f"[CALLBACK] Fetching user info from Google...")
-    try:
+        # Get user info
+        print(f"[CALLBACK] Fetching user info from Google...")
         user_info = requests.get(
             'https://openidconnect.googleapis.com/v1/userinfo',
             headers={'Authorization': f'Bearer {credentials.token}'}
         ).json()
         print(f"[CALLBACK] ✅ User info retrieved: {user_info.get('email')}")
         print(f"[CALLBACK] User info keys: {list(user_info.keys())}")
+
+        # Store user info in ONLY the cookie (no session)
+        user_json = json.dumps(user_info)
+        user_b64 = base64.b64encode(user_json.encode()).decode()
+        
+        print(f"[CALLBACK] User info prepared for cookie: {user_info.get('email')}")
+        print(f"[CALLBACK] Base64 encoded size: {len(user_b64)} bytes")
+
+        # Redirect to Vercel frontend with dashboard flag
+        frontend_url = f'{FRONTEND_URL}/?dashboard=1'
+        print(f"[CALLBACK] Redirecting to: {frontend_url}")
+        print("="*80)
+        print("[CALLBACK] ===== OAUTH CALLBACK SUCCEEDED - SETTING COOKIE & REDIRECTING =====")
+        print("="*80)
+        response = redirect(frontend_url)
+        
+        # Set user_data cookie - THIS IS THE ONLY PLACE USER DATA IS STORED
+        # CRITICAL: Must use SameSite=None with Secure=True for cross-site cookies
+        response.set_cookie(
+            'user_data',
+            user_b64,
+            max_age=86400,  # 24 hours
+            secure=True,    # HTTPS only for production
+            httponly=False, # Allow JS to read if needed
+            samesite='None', # Cross-site (important for Vercel -> Railway)
+            path='/',
+            domain=None  # Browser will use request domain
+        )
+        print(f"[CALLBACK] ✅ user_data cookie SET")
+        
+        # Clear the state cookie after verification
+        response.delete_cookie('oauth_state', path='/')
+        print(f"[CALLBACK] ✅ oauth_state cookie DELETED")
+        print(f"[CALLBACK] Response headers: Set-Cookie = {response.headers.getlist('Set-Cookie')}")
+        print("="*80 + "\n")
+        
+        return response
+        
     except Exception as e:
-        print(f"[ERROR] Failed to get user info: {e}")
+        print(f"[ERROR] UNEXPECTED ERROR in callback: {e}")
         import traceback
-        print(f"[ERROR] Traceback:\n{traceback.format_exc()}")
-        return jsonify({"error": f"User info fetch failed: {str(e)}"}), 400
-
-    # Store user info in ONLY the cookie (no session)
-    # Cookie is sent with every request automatically
-    user_json = json.dumps(user_info)
-    user_b64 = base64.b64encode(user_json.encode()).decode()
-    
-    print(f"[CALLBACK] User info prepared for cookie: {user_info.get('email')}")
-    print(f"[CALLBACK] Base64 encoded size: {len(user_b64)} bytes")
-
-    # Redirect to Vercel frontend with dashboard flag
-    frontend_url = f'{FRONTEND_URL}/?dashboard=1'
-    print(f"[CALLBACK] Redirecting to: {frontend_url}")
-    print("="*80)
-    print("[CALLBACK] ===== OAUTH CALLBACK SUCCEEDED - SETTING COOKIE & REDIRECTING =====")
-    print("="*80)
-    response = redirect(frontend_url)
-    
-    # Set user_data cookie - THIS IS THE ONLY PLACE USER DATA IS STORED
-    response.set_cookie(
-        'user_data',
-        user_b64,
-        max_age=86400,  # 24 hours
-        secure=False,   # Allow HTTP
-        httponly=False, # Allow JS to read if needed
-        samesite='None', # Cross-site (important for Vercel -> Railway)
-        path='/'
-    )
-    print(f"[CALLBACK] ✅ user_data cookie SET")
-    
-    # Clear the state cookie after verification
-    response.delete_cookie('oauth_state', path='/')
-    print(f"[CALLBACK] ✅ oauth_state cookie DELETED")
-    print(f"[CALLBACK] Final response headers: {dict(response.headers)}")
-    print("="*80 + "\n")
-    
-    return response
-    
-    return response
+        print(f"[ERROR] Full traceback:\n{traceback.format_exc()}")
+        print("="*80 + "\n")
+        return jsonify({"error": f"Callback error: {str(e)}"}), 500
 
 @app.route('/auth/logout', methods=['POST'])
 def logout():
