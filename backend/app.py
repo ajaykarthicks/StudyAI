@@ -20,10 +20,6 @@ load_dotenv(override=True)
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
 
-# Simple in-memory token store for authentication
-# Maps tokens to user info (can be replaced with Redis in production)
-auth_tokens = {}
-
 # Enable CORS for frontend with cookies
 # Allow all origins during development, lock down in production if needed
 CORS(app, 
@@ -102,19 +98,21 @@ def health():
 
 @app.route('/me')
 def me():
-    # Check for auth token in cookie
-    token = request.cookies.get('auth_token')
-    
-    if token and token in auth_tokens:
-        user = auth_tokens[token]
-        print(f"[DEBUG] User from token: {user.get('email')}")
-        return jsonify({"authenticated": True, "user": user})
-    
-    # Also check Flask session (for backward compatibility)
+    # Try to get user info from the Flask session cookie (most reliable)
     user = session.get('user')
     if user:
         print(f"[DEBUG] User from session: {user.get('email')}")
         return jsonify({"authenticated": True, "user": user})
+    
+    # Fallback: check for user_data cookie (contains user info directly)
+    user_cookie = request.cookies.get('user_data')
+    if user_cookie:
+        try:
+            user = json.loads(base64.b64decode(user_cookie))
+            print(f"[DEBUG] User from cookie: {user.get('email')}")
+            return jsonify({"authenticated": True, "user": user})
+        except Exception as e:
+            print(f"[DEBUG] Failed to decode user_data cookie: {e}")
     
     return jsonify({"authenticated": False}), 401
 
@@ -226,28 +224,26 @@ def google_callback():
     session['user'] = user_info
     session.modified = True
     print(f"[DEBUG] User stored in session: {user_info.get('email')}")
-    
-    # Create an auth token and store it
-    auth_token = secrets.token_urlsafe(32)
-    auth_tokens[auth_token] = user_info
-    print(f"[DEBUG] Auth token created: {auth_token[:20]}...")
 
     # Redirect to Vercel frontend with dashboard flag
     frontend_url = f'{FRONTEND_URL}/?dashboard=1'
     print(f"[DEBUG] Redirecting to: {frontend_url}")
     response = redirect(frontend_url)
     
-    # Set the auth token as a cookie
-    # Important: max_age=3600 (1 hour), allow cross-site access
+    # Also set user_data cookie as backup (Base64 encoded JSON)
+    # This persists on the client side and doesn't depend on server memory
+    user_json = json.dumps(user_info)
+    user_b64 = base64.b64encode(user_json.encode()).decode()
     response.set_cookie(
-        'auth_token',
-        auth_token,
-        max_age=3600,  # 1 hour
-        secure=False,  # Allow HTTP for development
-        httponly=False,  # Allow JavaScript to read if needed
-        samesite='None',  # Allow cross-site requests
+        'user_data',
+        user_b64,
+        max_age=86400,  # 24 hours
+        secure=False,   # Allow HTTP
+        httponly=False, # Allow JS to read if needed
+        samesite='None', # Cross-site
         path='/'
     )
+    print(f"[DEBUG] User data cookie set")
     
     # Clear the state cookie after verification
     response.delete_cookie('oauth_state', path='/')
@@ -256,18 +252,13 @@ def google_callback():
 
 @app.route('/auth/logout', methods=['POST'])
 def logout():
-    # Clear token from memory
-    token = request.cookies.get('auth_token')
-    if token and token in auth_tokens:
-        del auth_tokens[token]
-        print(f"[DEBUG] Token cleared: {token[:20]}...")
-    
     session.clear()
     print(f"[DEBUG] Session cleared")
     
     from flask import make_response
     response = make_response(jsonify({"message": "Logged out"}))
-    response.delete_cookie('auth_token', path='/')
+    response.delete_cookie('user_data', path='/')
+    response.delete_cookie('oauth_state', path='/')
     return response
 
 # ------------------------- PDF Processing -------------------------
