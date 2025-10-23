@@ -8,7 +8,9 @@ let appState = {
   currentFileName: '',
   isAuthenticated: false,
   user: null,
-  chatHistory: []
+  chatHistory: [],
+  pdfText: '', // Store PDF text client-side
+  pdfBase64: '' // Store PDF as Base64 for requests
 };
 
 // ============================================
@@ -271,8 +273,12 @@ async function handleMainUpload() {
     return;
   }
 
+  const file = fileInput.files[0];
+  
+  // Extract PDF text on client-side using PDF.js library
+  // For now, we'll send the file to backend and it returns the text
   const formData = new FormData();
-  formData.append('file', fileInput.files[0]);
+  formData.append('file', file);
 
   try {
     const response = await fetch(`${API_BASE_URL}/api/upload-pdf`, {
@@ -284,7 +290,15 @@ async function handleMainUpload() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Upload failed');
     
-    appState.currentFileName = fileInput.files[0].name;
+    // Store PDF text in appState for later use
+    appState.pdfText = data.pdf_text;
+    appState.pdfBase64 = data.pdf_base64;
+    appState.currentFileName = file.name;
+    
+    // Also store in localStorage as backup
+    localStorage.setItem('pdf_text_backup', appState.pdfText);
+    localStorage.setItem('pdf_filename_backup', file.name);
+    
     document.getElementById('current-file-name').textContent = appState.currentFileName;
     showPage('dashboard');
     selectTool('chatbot', document.querySelector('.tool-menu-item'));
@@ -323,6 +337,17 @@ async function handleChat() {
     return;
   }
 
+  // Check if PDF is loaded
+  if (!appState.pdfText && !appState.pdfBase64) {
+    const backup = localStorage.getItem('pdf_text_backup');
+    if (backup) {
+      appState.pdfText = backup;
+    } else {
+      addChatMessage('assistant', 'Error: No PDF uploaded');
+      return;
+    }
+  }
+
   // Add user message to chat
   addChatMessage('user', question);
   document.getElementById('chatbot-question').value = '';
@@ -331,7 +356,7 @@ async function handleChat() {
     const response = await fetch(`${API_BASE_URL}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, pdf_text: appState.pdfText }),
       credentials: 'include',
     });
 
@@ -371,9 +396,22 @@ async function handleSummarize() {
   const resultBox = document.getElementById('summarizer-result');
   resultBox.textContent = 'Generating summary...';
 
+  // Check if PDF is loaded
+  if (!appState.pdfText && !appState.pdfBase64) {
+    const backup = localStorage.getItem('pdf_text_backup');
+    if (backup) {
+      appState.pdfText = backup;
+    } else {
+      resultBox.textContent = 'Error: No PDF uploaded';
+      return;
+    }
+  }
+
   try {
     const response = await fetch(`${API_BASE_URL}/api/summarize`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pdf_text: appState.pdfText }),
       credentials: 'include',
     });
 
@@ -395,11 +433,22 @@ async function handleQuiz() {
   const resultBox = document.getElementById('quiz-result');
   resultBox.textContent = `Generating ${num_questions} quiz questions...`;
 
+  // Check if PDF is loaded
+  if (!appState.pdfText && !appState.pdfBase64) {
+    const backup = localStorage.getItem('pdf_text_backup');
+    if (backup) {
+      appState.pdfText = backup;
+    } else {
+      resultBox.textContent = 'Error: No PDF uploaded';
+      return;
+    }
+  }
+
   try {
     const response = await fetch(`${API_BASE_URL}/api/generate-quiz`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ num_questions }),
+      body: JSON.stringify({ num_questions, pdf_text: appState.pdfText }),
       credentials: 'include',
     });
 
@@ -433,11 +482,22 @@ async function handleFlashcards() {
   const resultBox = document.getElementById('flashcards-result');
   resultBox.textContent = `Generating ${num_cards} flashcards...`;
 
+  // Check if PDF is loaded
+  if (!appState.pdfText && !appState.pdfBase64) {
+    const backup = localStorage.getItem('pdf_text_backup');
+    if (backup) {
+      appState.pdfText = backup;
+    } else {
+      resultBox.textContent = 'Error: No PDF uploaded';
+      return;
+    }
+  }
+
   try {
     const response = await fetch(`${API_BASE_URL}/api/generate-flashcards`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ num_cards }),
+      body: JSON.stringify({ num_cards, pdf_text: appState.pdfText }),
       credentials: 'include',
     });
 

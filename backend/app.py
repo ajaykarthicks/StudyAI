@@ -357,17 +357,30 @@ def upload_pdf():
             text_parts.append(page_text)
         text = "\n".join(text_parts)
 
-        # Store in server-side session
+        # Store in server-side session as backup
         session['pdf_text'] = text
-        return jsonify({"message": "PDF uploaded successfully", "text_length": len(text)})
+        
+        # Also return the text to frontend for client-side storage
+        pdf_b64 = base64.b64encode(text.encode()).decode()
+        
+        print(f"[PDF] Uploaded PDF: {len(text)} characters, {len(reader.pages)} pages")
+        return jsonify({
+            "message": "PDF uploaded successfully", 
+            "text_length": len(text),
+            "pdf_text": text,  # Send text to frontend
+            "pdf_base64": pdf_b64  # Also send as Base64
+        })
     except Exception as e:
+        print(f"[ERROR] PDF upload failed: {e}")
         return jsonify({"error": f"Failed to read PDF: {str(e)}"}), 500
 
 @app.route('/api/chat', methods=['POST'])
 def chat_with_pdf():
     data = request.get_json(silent=True) or {}
     question = data.get('question', '').strip()
-    pdf_text = session.get('pdf_text', '')
+    
+    # Try to get PDF from request body first (client-side), then fall back to session
+    pdf_text = data.get('pdf_text', '') or session.get('pdf_text', '')
 
     if not pdf_text:
         return jsonify({"error": "No PDF uploaded"}), 400
@@ -390,7 +403,10 @@ def chat_with_pdf():
 
 @app.route('/api/summarize', methods=['POST'])
 def summarize_pdf():
-    pdf_text = session.get('pdf_text', '')
+    data = request.get_json(silent=True) or {}
+    # Try to get PDF from request body first (client-side), then fall back to session
+    pdf_text = data.get('pdf_text', '') or session.get('pdf_text', '')
+    
     if not pdf_text:
         return jsonify({"error": "No PDF uploaded"}), 400
 
@@ -409,8 +425,9 @@ def summarize_pdf():
 
 @app.route('/api/generate-quiz', methods=['POST'])
 def generate_quiz():
-    pdf_text = session.get('pdf_text', '')
     data = request.get_json(silent=True) or {}
+    # Try to get PDF from request body first (client-side), then fall back to session
+    pdf_text = data.get('pdf_text', '') or session.get('pdf_text', '')
     num_questions = int(data.get('num_questions', 5))
 
     if not pdf_text:
@@ -438,8 +455,9 @@ def generate_quiz():
 
 @app.route('/api/generate-flashcards', methods=['POST'])
 def generate_flashcards():
-    pdf_text = session.get('pdf_text', '')
     data = request.get_json(silent=True) or {}
+    # Try to get PDF from request body first (client-side), then fall back to session
+    pdf_text = data.get('pdf_text', '') or session.get('pdf_text', '')
     num_cards = int(data.get('num_cards', 10))
 
     if not pdf_text:
