@@ -41,19 +41,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function checkAuth() {
   try {
+    console.log('Checking authentication status...');
     const response = await fetch(`${API_BASE_URL}/me`, { 
       credentials: 'include',
+      method: 'GET',
       headers: {
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
       }
     });
+    console.log('Auth check response status:', response.status);
     if (response.ok) {
       const data = await response.json();
+      console.log('User authenticated:', data.user);
       appState.isAuthenticated = true;
       appState.user = data.user;
       updateUserInfo();
       showPage('upload-page');
     } else {
+      console.log('User not authenticated');
       appState.isAuthenticated = false;
       showPage('landing-page');
     }
@@ -66,25 +72,31 @@ async function checkAuth() {
 
 async function checkAuthAndShowDashboard() {
   try {
+    console.log('Checking auth and showing dashboard...');
     const response = await fetch(`${API_BASE_URL}/me`, { 
       credentials: 'include',
+      method: 'GET',
       headers: {
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
       }
     });
+    console.log('Dashboard auth check response status:', response.status);
     if (response.ok) {
       const data = await response.json();
+      console.log('User authenticated for dashboard:', data.user);
       appState.isAuthenticated = true;
       appState.user = data.user;
       updateUserInfo();
       // Skip upload page and go directly to dashboard after OAuth callback
       showPage('dashboard');
     } else {
+      console.log('User not authenticated for dashboard, showing landing');
       appState.isAuthenticated = false;
       showPage('landing-page');
     }
   } catch (error) {
-    console.error('Auth check failed:', error);
+    console.error('Dashboard auth check failed:', error);
     appState.isAuthenticated = false;
     showPage('landing-page');
   }

@@ -35,19 +35,23 @@ CORS(app,
      resources={r"*": {
          "origins": CORS_ORIGINS,
          "methods": ["GET", "POST", "OPTIONS"],
-         "allow_headers": ["Content-Type"]
+         "allow_headers": ["Content-Type"],
+         "expose_headers": ["Content-Type"]
      }},
-     expose_headers=["Content-Type"],
      max_age=3600
 )
 
 # Use server-side session to store PDF text (avoids huge cookies)
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_PERMANENT'] = False
-app.config['SESSION_COOKIE_SECURE'] = False  # Allow HTTP for local dev
+# For production (HTTPS), set SESSION_COOKIE_SECURE = True
+# For development (HTTP), it's set to False
+IS_PRODUCTION = os.getenv('ENVIRONMENT', '').lower() == 'production' or 'railway' in os.getenv('RAILWAY_STATIC_URL', '')
+app.config['SESSION_COOKIE_SECURE'] = IS_PRODUCTION  # True in production, False in dev
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Allow redirects from Google
+app.config['SESSION_COOKIE_SAMESITE'] = 'None' if IS_PRODUCTION else 'Lax'  # 'None' required for cross-site in production
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
+print(f"[Session] SECURE={app.config['SESSION_COOKIE_SECURE']}, SAMESITE={app.config['SESSION_COOKIE_SAMESITE']}")
 Session(app)
 
 # Google OAuth Configuration
