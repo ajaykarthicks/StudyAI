@@ -265,6 +265,9 @@ def google_callback():
     # Redirect to Vercel frontend with dashboard flag
     frontend_url = f'{FRONTEND_URL}/?dashboard=1'
     print(f"[DEBUG] Redirecting to: {frontend_url}")
+    print("=" * 60)
+    print("[DEBUG] OAUTH CALLBACK SUCCEEDED - redirecting to Vercel")
+    print("=" * 60)
     response = redirect(frontend_url)
     
     # Set user_data cookie - THIS IS THE ONLY PLACE USER DATA IS STORED
