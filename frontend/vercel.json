@@ -1,5 +1,4 @@
 {
   "buildCommand": "echo 'Frontend ready'",
-  "outputDirectory": ".",
-  "framework": "other"
+  "outputDirectory": "."
 }
