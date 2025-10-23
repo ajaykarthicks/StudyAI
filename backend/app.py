@@ -20,11 +20,12 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY')
 CORS_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://studyai-gamma.vercel.app",
 ]
 
-# Add production Vercel URL if available
+# Add production Vercel URL if available from environment
 VERCEL_URL = os.getenv('VERCEL_URL')
-if VERCEL_URL and VERCEL_URL not in CORS_ORIGINS:
+if VERCEL_URL and f"https://{VERCEL_URL}" not in CORS_ORIGINS:
     CORS_ORIGINS.append(f"https://{VERCEL_URL}")
 
 print(f"[CORS] Allowed origins: {CORS_ORIGINS}")
