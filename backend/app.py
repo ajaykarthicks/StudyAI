@@ -67,6 +67,11 @@ SCOPES = [
 def index():
     return jsonify({"message": "Smart Study Hub API"})
 
+@app.route('/health')
+def health():
+    """Health check endpoint for Railway"""
+    return jsonify({"status": "healthy"}), 200
+
 @app.route('/me')
 def me():
     user = session.get('user')
