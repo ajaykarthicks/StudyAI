@@ -274,9 +274,8 @@ async function handleMainUpload() {
   }
 
   const file = fileInput.files[0];
+  console.log('🔼 Starting PDF upload:', file.name, 'Size:', file.size);
   
-  // Extract PDF text on client-side using PDF.js library
-  // For now, we'll send the file to backend and it returns the text
   const formData = new FormData();
   formData.append('file', file);
 
@@ -287,13 +286,26 @@ async function handleMainUpload() {
       credentials: 'include',
     });
     
+    console.log('📦 Upload response status:', response.status);
     const data = await response.json();
+    console.log('📊 Upload response data:', {
+      message: data.message,
+      text_length: data.text_length,
+      has_pdf_text: !!data.pdf_text,
+      has_pdf_base64: !!data.pdf_base64
+    });
+    
     if (!response.ok) throw new Error(data.error || 'Upload failed');
     
     // Store PDF text in appState for later use
     appState.pdfText = data.pdf_text;
     appState.pdfBase64 = data.pdf_base64;
     appState.currentFileName = file.name;
+    
+    console.log('✅ PDF stored in appState:', {
+      pdfText_length: appState.pdfText ? appState.pdfText.length : 0,
+      currentFileName: appState.currentFileName
+    });
     
     // Also store in localStorage as backup
     localStorage.setItem('pdf_text_backup', appState.pdfText);
@@ -303,7 +315,7 @@ async function handleMainUpload() {
     showPage('dashboard');
     selectTool('chatbot', document.querySelector('.tool-menu-item'));
   } catch (error) {
-    console.error('Upload error:', error);
+    console.error('❌ Upload error:', error);
     alert(`Error: ${error.message}`);
   }
 }
@@ -401,11 +413,15 @@ async function handleSummarize() {
     const backup = localStorage.getItem('pdf_text_backup');
     if (backup) {
       appState.pdfText = backup;
+      console.log('📄 Restored PDF from localStorage');
     } else {
       resultBox.textContent = 'Error: No PDF uploaded';
+      console.error('❌ No PDF in appState or localStorage');
       return;
     }
   }
+
+  console.log('📝 Summarize: Sending PDF of size', appState.pdfText.length);
 
   try {
     const response = await fetch(`${API_BASE_URL}/api/summarize`, {
@@ -415,12 +431,15 @@ async function handleSummarize() {
       credentials: 'include',
     });
 
+    console.log('📦 Summarize response status:', response.status);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to summarize');
     
     resultBox.textContent = data.summary;
+    console.log('✅ Summary generated');
   } catch (error) {
     resultBox.textContent = `Error: ${error.message}`;
+    console.error('❌ Summarize error:', error);
   }
 }
 
