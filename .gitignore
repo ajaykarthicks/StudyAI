@@ -1,0 +1,44 @@
+# Python virtual environment
+backend/backend-env/
+backend/venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Flask session files
+backend/flask_session/
+flask_session/
+
+# Environment variables (NEVER commit these!)
+.env
+.env.local
+.env.*.local
+
+# IDE settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Node modules (if using npm)
+node_modules/
+npm-debug.log
+
+# OS specific
+.AppleDouble
+.LSOverride
+*.rar
+*.zip
+
+# Cache
+.pytest_cache/
+.coverage
+*.cache

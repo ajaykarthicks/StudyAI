@@ -1,0 +1,11 @@
+{
+  "buildCommand": "echo 'Frontend ready'",
+  "outputDirectory": ".",
+  "framework": "other",
+  "env": [
+    {
+      "key": "BACKEND_URL",
+      "value": "your-railway-backend-url.up.railway.app"
+    }
+  ]
+}
