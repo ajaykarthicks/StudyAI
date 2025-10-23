@@ -63,7 +63,19 @@ Session(app)
 # Google OAuth Configuration
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
-GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5000/auth/google/callback')
+
+# Determine backend URL for OAuth redirect (changes based on environment)
+# If running on Railway, use the Railway URL; otherwise use localhost for dev
+if os.getenv('RAILWAY_PUBLIC_DOMAIN'):
+    # Running on Railway - use the public domain
+    BACKEND_URL = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}"
+else:
+    # Development - use localhost
+    BACKEND_URL = 'http://localhost:5000'
+
+GOOGLE_REDIRECT_URI = f"{BACKEND_URL}/auth/google/callback"
+print(f"[Init] BACKEND_URL: {BACKEND_URL}")
+print(f"[Init] GOOGLE_REDIRECT_URI: {GOOGLE_REDIRECT_URI}")
 
 # Groq client (LLM-as-a-service)
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
