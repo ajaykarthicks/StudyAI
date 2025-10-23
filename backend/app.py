@@ -51,15 +51,24 @@ GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://studyai-gamma.vercel.app')
 
+# Detect environment
+if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+    print(f"[WARNING] GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not set!")
+    print(f"[WARNING] OAuth will not work - set these env vars on Railway")
+
 # Production - use Railway public domain, fallback to env var
 RAILWAY_PUBLIC_DOMAIN = os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_DOMAIN') or 'studyai-production.up.railway.app'
 
 BACKEND_URL = f"https://{RAILWAY_PUBLIC_DOMAIN}"
 GOOGLE_REDIRECT_URI = f"{BACKEND_URL}/auth/google/callback"
 
+print(f"\n[Init] ========================================")
+print(f"[Init] GOOGLE_CLIENT_ID: {'SET' if GOOGLE_CLIENT_ID else 'NOT SET'}")
+print(f"[Init] GOOGLE_CLIENT_SECRET: {'SET' if GOOGLE_CLIENT_SECRET else 'NOT SET'}")
 print(f"[Init] BACKEND_URL: {BACKEND_URL}")
 print(f"[Init] FRONTEND_URL: {FRONTEND_URL}")
 print(f"[Init] GOOGLE_REDIRECT_URI: {GOOGLE_REDIRECT_URI}")
+print(f"[Init] ========================================\n")
 
 # Groq client (LLM-as-a-service)
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
@@ -95,6 +104,18 @@ def index():
 def health():
     """Health check endpoint for Railway"""
     return jsonify({"status": "healthy"}), 200
+
+@app.route('/debug/config')
+def debug_config():
+    """Debug endpoint to check configuration"""
+    return jsonify({
+        "backend_url": BACKEND_URL,
+        "frontend_url": FRONTEND_URL,
+        "google_redirect_uri": GOOGLE_REDIRECT_URI,
+        "google_client_id_set": bool(GOOGLE_CLIENT_ID),
+        "google_client_secret_set": bool(GOOGLE_CLIENT_SECRET),
+        "cors_origins": "*"
+    }), 200
 
 @app.route('/me')
 def me():
