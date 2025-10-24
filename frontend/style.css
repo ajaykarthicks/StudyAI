@@ -1444,9 +1444,10 @@ input:checked + .toggle-slider:before {
   .navbar-left {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: 0.5rem;
     min-width: 0;
+    flex: 1;
   }
   
   .logo-small {
@@ -1459,17 +1460,31 @@ input:checked + .toggle-slider:before {
   }
   
   .file-info {
-    display: flex;
+    display: none;
     font-size: 0.8rem;
     color: var(--text-secondary);
   }
   
   .navbar-center {
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
     min-height: auto;
     text-align: center;
+  }
+
+  .navbar-tool-heading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    text-align: center;
+  }
+
+  .navbar-tool-heading h2 {
+    font-size: 1rem;
+    margin: 0;
+    font-weight: 600;
   }
   
   .navbar-tool-info {
@@ -1598,6 +1613,7 @@ input:checked + .toggle-slider:before {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    color: currentColor;
   }
 
   .tool-icon i {
@@ -1605,6 +1621,25 @@ input:checked + .toggle-slider:before {
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Mobile tool icon colors */
+  .tool-menu-item:nth-child(1) .tool-icon i {
+    color: #00d4ff;
+  }
+
+  .tool-menu-item:nth-child(2) .tool-icon i {
+    color: #6366f1;
+  }
+
+  .tool-menu-item:nth-child(3) .tool-icon i {
+    color: #10b981;
+  }
+
+  .tool-menu-item:nth-child(4) .tool-icon i {
+    color: #f59e0b;
   }
   
   .tool-label {
@@ -1865,14 +1900,24 @@ input:checked + .toggle-slider:before {
     background: var(--surface);
     border-top: 1px solid var(--border);
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: var(--spacing-md);
+    align-items: center;
+    justify-content: center;
   }
 
   .progress-section {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
+    flex: 1;
+  }
+
+  .nav-arrow-mobile {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   
   .flashcards-header {

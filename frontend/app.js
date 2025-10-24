@@ -694,12 +694,25 @@ function updateNavbarHeader(toolName) {
   
   const tool = toolInfo[toolName];
   if (tool) {
+    // Desktop view - show full info in center
     navbarCenter.innerHTML = `
       <div class="navbar-tool-info">
         <h2><i class="${tool.icon}"></i> ${tool.title}</h2>
         <p>${tool.description}</p>
       </div>
     `;
+
+    // Mobile view - add just the heading in a separate row below
+    const navbar = document.querySelector('.navbar');
+    let mobileHeading = navbar.querySelector('.navbar-tool-heading');
+    
+    if (!mobileHeading) {
+      mobileHeading = document.createElement('div');
+      mobileHeading.className = 'navbar-tool-heading';
+      navbar.appendChild(mobileHeading);
+    }
+    
+    mobileHeading.innerHTML = `<h2><i class="${tool.icon}"></i> ${tool.title}</h2>`;
   }
 }
 
@@ -1126,19 +1139,23 @@ function renderFlashcards(container) {
   // Progress section below card with mobile navigation
   html += '<div class="flashcards-progress-bottom">';
   
-  // Progress info and bar
-  html += '<div class="progress-section">';
-  html += `<div class="progress-info">Card <strong>${cardNumber}</strong> of <strong>${totalCards}</strong></div>`;
-  html += `<div class="progress-bar"><div class="progress-fill" style="width: ${progress}%"></div></div>`;
-  html += '</div>';
-  
-  // Mobile navigation buttons (at bottom)
-  html += '<div class="flashcards-nav-mobile">';
+  // Left arrow (mobile)
+  html += '<div class="nav-arrow-mobile">';
   if (flashcardState.currentCardIndex > 0) {
     html += '<button class="flashcard-nav-btn flashcard-nav-mobile-btn" onclick="previousFlashcard()" title="Previous"><i class="fas fa-chevron-left"></i></button>';
   } else {
     html += '<button class="flashcard-nav-btn flashcard-nav-mobile-btn" disabled><i class="fas fa-chevron-left"></i></button>';
   }
+  html += '</div>';
+  
+  // Progress info and bar (center)
+  html += '<div class="progress-section">';
+  html += `<div class="progress-info">Card <strong>${cardNumber}</strong> of <strong>${totalCards}</strong></div>`;
+  html += `<div class="progress-bar"><div class="progress-fill" style="width: ${progress}%"></div></div>`;
+  html += '</div>';
+  
+  // Right arrow (mobile)
+  html += '<div class="nav-arrow-mobile">';
   if (flashcardState.currentCardIndex < totalCards - 1) {
     html += '<button class="flashcard-nav-btn flashcard-nav-mobile-btn" onclick="nextFlashcard()" title="Next"><i class="fas fa-chevron-right"></i></button>';
   } else {
