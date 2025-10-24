@@ -1007,7 +1007,11 @@ async function handleFlashcards() {
       }
     } else if (data.flashcards_text) {
       console.log('⚠️ API returned flashcards_text instead:', data.flashcards_text);
-      resultBox.textContent = 'API returned: ' + data.flashcards_text;
+      resultBox.innerHTML = `<div style="padding: 20px; text-align: left; color: var(--text-secondary); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto;">
+        <strong>Generated Content (Raw):</strong>
+        <br><br>
+        ${data.flashcards_text}
+      </div>`;
       return;
     }
     

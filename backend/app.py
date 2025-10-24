@@ -460,6 +460,8 @@ def generate_flashcards():
     pdf_text = data.get('pdf_text', '') or session.get('pdf_text', '')
     num_cards = int(data.get('num_cards', 10))
 
+    print(f"[Flashcards] Generating {num_cards} flashcards from PDF of size {len(pdf_text)} characters")
+
     if not pdf_text:
         return jsonify({"error": "No PDF uploaded"}), 400
 
@@ -473,13 +475,33 @@ def generate_flashcards():
             temperature=0.3
         )
 
+        if content:
+            print(f"[Flashcards] LLM Response: {str(content)[:200]}...")
+        else:
+            print("[Flashcards] LLM returned empty response")
+
         import json
         try:
             cards = json.loads(content)  # type: ignore
+            print(f"[Flashcards] Successfully parsed {len(cards)} flashcards")
             return jsonify({"flashcards": cards})
-        except Exception:
+        except Exception as e:
+            print(f"[Flashcards] Failed to parse JSON: {e}")
+            print(f"[Flashcards] Raw content: {content}")
+            # Try to extract JSON from the response if it's embedded in text
+            import re
+            if content:
+                json_match = re.search(r'\[.*\]', str(content), re.DOTALL)
+                if json_match:
+                    try:
+                        cards = json.loads(json_match.group())
+                        print(f"[Flashcards] Extracted {len(cards)} flashcards from embedded JSON")
+                        return jsonify({"flashcards": cards})
+                    except:
+                        pass
             return jsonify({"flashcards_text": content})
     except Exception as e:
+        print(f"[Flashcards] Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
