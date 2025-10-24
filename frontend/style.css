@@ -990,9 +990,9 @@ input:checked + .toggle-slider:before {
 }
 
 .tool-icon {
-  font-size: 7.5rem;
-  width: 240px;
-  height: 240px;
+  font-size: 2rem;
+  width: 60px;
+  height: 60px;
   border-radius: var(--radius-lg);
   background: transparent;
   display: flex;
@@ -1005,7 +1005,7 @@ input:checked + .toggle-slider:before {
 }
 
 .tool-icon i {
-  font-size: 7.5rem;
+  font-size: 2rem;
   pointer-events: none;
   transition: var(--transition);
 }
@@ -2429,14 +2429,18 @@ input[type="text"]:focus, input[type="number"]:focus {
 }
 
 .flashcard.flipped {
-  animation: fadeOutScale 0.3s ease-out forwards;
+  opacity: 1;
+  transform: scale(1);
 }
 
-@keyframes fadeOutScale {
-  to {
-    opacity: 0;
-    transform: scale(0.85);
-  }
+.flashcard.flipped .flashcard-front {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.flashcard.flipped .flashcard-back {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* Card Sides */
@@ -2447,7 +2451,6 @@ input[type="text"]:focus, input[type="number"]:focus {
   height: 100%;
   top: 0;
   left: 0;
-  backface-visibility: hidden;
   display: flex;
   flex-direction: column;
   border-radius: 16px;
@@ -2457,6 +2460,7 @@ input[type="text"]:focus, input[type="number"]:focus {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   word-wrap: break-word;
+  transition: opacity 0.5s ease-in-out;
 }
 
 /* Front Side - Question */
@@ -2468,6 +2472,8 @@ input[type="text"]:focus, input[type="number"]:focus {
   align-items: center;
   text-align: center;
   gap: var(--spacing-md);
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* Back Side - Answer */
@@ -2475,11 +2481,12 @@ input[type="text"]:focus, input[type="number"]:focus {
   background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
   color: white;
   border: 2px solid rgba(255, 255, 255, 0.3);
-  transform: rotateY(180deg);
   justify-content: center;
   align-items: center;
   text-align: center;
   gap: var(--spacing-md);
+  opacity: 0;
+  pointer-events: none;
 }
 
 .flashcard-label {
