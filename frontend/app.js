@@ -1136,8 +1136,17 @@ function renderFlashcards(container) {
   
   html += '<div class="flashcards-container">';
   
-  // Main card section - no side navigation
+  // Main card section with side navigation (desktop only)
   html += '<div class="flashcards-main-layout">';
+  
+  // Previous button (left) - desktop only
+  html += '<div class="flashcards-nav-side flashcards-nav-desktop">';
+  if (flashcardState.currentCardIndex > 0) {
+    html += '<button class="flashcard-nav-btn flashcard-nav-side-btn" onclick="previousFlashcard()" title="Previous"><i class="fas fa-chevron-left"></i></button>';
+  } else {
+    html += '<button class="flashcard-nav-btn flashcard-nav-side-btn" disabled><i class="fas fa-chevron-left"></i></button>';
+  }
+  html += '</div>';
   
   // Card in center
   html += '<div class="flashcards-main">';
@@ -1161,6 +1170,15 @@ function renderFlashcards(container) {
   html += '</div>'; // end flashcard
   html += '</div>'; // end card-wrapper
   html += '</div>'; // end flashcards-main
+  
+  // Next button (right) - desktop only
+  html += '<div class="flashcards-nav-side flashcards-nav-desktop">';
+  if (flashcardState.currentCardIndex < totalCards - 1) {
+    html += '<button class="flashcard-nav-btn flashcard-nav-side-btn" onclick="nextFlashcard()" title="Next"><i class="fas fa-chevron-right"></i></button>';
+  } else {
+    html += '<button class="flashcard-nav-btn flashcard-nav-side-btn" disabled><i class="fas fa-chevron-right"></i></button>';
+  }
+  html += '</div>';
   
   html += '</div>'; // end flashcards-main-layout
   
