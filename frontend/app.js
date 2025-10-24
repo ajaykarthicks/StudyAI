@@ -831,13 +831,36 @@ async function handleFlashcards() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to generate flashcards');
 
-    if (data.flashcards && Array.isArray(data.flashcards)) {
-      flashcardState.cards = data.flashcards;
+    console.log('Flashcard API Response:', data); // Debug log
+    
+    let flashcards = [];
+    
+    // Handle different response formats
+    if (data.flashcards) {
+      if (Array.isArray(data.flashcards)) {
+        flashcards = data.flashcards;
+      } else if (typeof data.flashcards === 'string') {
+        try {
+          flashcards = JSON.parse(data.flashcards);
+        } catch (e) {
+          console.error('Failed to parse flashcards string:', e);
+          resultBox.textContent = 'Error parsing flashcards';
+          return;
+        }
+      }
+    }
+    
+    if (flashcards && flashcards.length > 0) {
+      // Ensure each card has front and back properties
+      flashcardState.cards = flashcards.map(card => ({
+        front: card.front || card.question || card.q || '',
+        back: card.back || card.answer || card.a || ''
+      }));
       flashcardState.currentCardIndex = 0;
       flashcardState.flipped = {};
       renderFlashcards(resultBox);
     } else {
-      resultBox.textContent = data.flashcards_text || 'No flashcards generated';
+      resultBox.textContent = data.flashcards_text || 'No flashcards generated - please try again';
     }
   } catch (error) {
     resultBox.innerHTML = `<div style="color: var(--error); padding: 20px;">Error: ${error.message}</div>`;
@@ -847,15 +870,31 @@ async function handleFlashcards() {
 function renderFlashcards(container) {
   // Check if cards exist
   if (!flashcardState.cards || flashcardState.cards.length === 0) {
+    console.warn('No flashcards available');
     container.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No flashcards generated yet</div>';
     return;
   }
   
+  const currentIndex = flashcardState.currentCardIndex;
+  if (currentIndex >= flashcardState.cards.length) {
+    flashcardState.currentCardIndex = 0;
+  }
+  
   const card = flashcardState.cards[flashcardState.currentCardIndex];
+  
+  // Safety check for card properties
+  if (!card) {
+    console.error('Card is null or undefined at index', flashcardState.currentCardIndex);
+    container.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--error);">Error loading card</div>';
+    return;
+  }
+  
   const isFlipped = flashcardState.flipped[flashcardState.currentCardIndex] || false;
   const totalCards = flashcardState.cards.length;
-  const currentIndex = flashcardState.currentCardIndex + 1;
-  const progress = (currentIndex / totalCards) * 100;
+  const cardNumber = flashcardState.currentCardIndex + 1;
+  const progress = (cardNumber / totalCards) * 100;
+  
+  console.log(`Rendering card ${cardNumber}/${totalCards}`, card); // Debug log
   
   let html = '';
   
@@ -881,14 +920,14 @@ function renderFlashcards(container) {
   // Front side - Question
   html += '<div class="flashcard-front">';
   html += '<div class="flashcard-label">Question</div>';
-  html += `<div class="flashcard-text">${escapeHtml(card.front)}</div>`;
+  html += `<div class="flashcard-text">${escapeHtml(card.front || '')}</div>`;
   html += '<div class="flashcard-tip">Click to reveal answer</div>';
   html += '</div>';
   
   // Back side - Answer
   html += '<div class="flashcard-back">';
   html += '<div class="flashcard-label">Answer</div>';
-  html += `<div class="flashcard-text">${escapeHtml(card.back)}</div>`;
+  html += `<div class="flashcard-text">${escapeHtml(card.back || '')}</div>`;
   html += '<div class="flashcard-tip">Click to reveal question</div>';
   html += '</div>';
   
@@ -909,7 +948,7 @@ function renderFlashcards(container) {
   
   // Progress section below card
   html += '<div class="flashcards-progress-bottom">';
-  html += `<div class="progress-info">Card <strong>${currentIndex}</strong> of <strong>${totalCards}</strong></div>`;
+  html += `<div class="progress-info">Card <strong>${cardNumber}</strong> of <strong>${totalCards}</strong></div>`;
   html += `<div class="progress-bar"><div class="progress-fill" style="width: ${progress}%"></div></div>`;
   html += '</div>';
   
