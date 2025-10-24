@@ -969,8 +969,8 @@ input:checked + .toggle-slider:before {
 .tool-menu-item {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
-  padding: var(--spacing-sm);
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs);
   border-radius: var(--radius-lg);
   background: var(--background);
   cursor: pointer;
@@ -990,9 +990,9 @@ input:checked + .toggle-slider:before {
 }
 
 .tool-icon {
-  font-size: 2.5rem;
-  width: 80px;
-  height: 80px;
+  font-size: 7.5rem;
+  width: 240px;
+  height: 240px;
   border-radius: var(--radius-lg);
   background: transparent;
   display: flex;
@@ -1005,7 +1005,7 @@ input:checked + .toggle-slider:before {
 }
 
 .tool-icon i {
-  font-size: 2.5rem;
+  font-size: 7.5rem;
   pointer-events: none;
   transition: var(--transition);
 }
@@ -2399,37 +2399,44 @@ input[type="text"]:focus, input[type="number"]:focus {
 }
 
 .card-wrapper {
-  width: 600px;
-  height: 500px;
+  width: 450px;
+  height: 380px;
   max-width: 90%;
   max-height: 80%;
   perspective: 1200px;
 }
 
-/* Flashcard 3D Flip */
+/* Flashcard Fade & Scale Animation */
 .flashcard {
   width: 100%;
   height: 100%;
   position: relative;
   transform-style: preserve-3d;
-  transition: transform 1s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
   cursor: pointer;
-  animation: slideIn 0.5s ease-out;
+  animation: fadeInScale 0.5s ease-out;
 }
 
-@keyframes slideIn {
+@keyframes fadeInScale {
   from {
     opacity: 0;
-    transform: rotateY(90deg) scale(0.8);
+    transform: scale(0.85);
   }
   to {
     opacity: 1;
-    transform: rotateY(0deg) scale(1);
+    transform: scale(1);
   }
 }
 
 .flashcard.flipped {
-  transform: rotateY(180deg);
+  animation: fadeOutScale 0.3s ease-out forwards;
+}
+
+@keyframes fadeOutScale {
+  to {
+    opacity: 0;
+    transform: scale(0.85);
+  }
 }
 
 /* Card Sides */
