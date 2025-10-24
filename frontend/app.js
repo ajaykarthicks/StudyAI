@@ -863,13 +863,19 @@ function renderFlashcards(container) {
   
   html += '<div class="flashcards-container">';
   
-  // Progress section
-  html += '<div class="flashcards-progress">';
-  html += `<div class="progress-info">Card <strong>${currentIndex}</strong> of <strong>${totalCards}</strong></div>`;
-  html += `<div class="progress-bar"><div class="progress-fill" style="width: ${progress}%"></div></div>`;
+  // Main card section with side navigation
+  html += '<div class="flashcards-main-layout">';
+  
+  // Previous button (left)
+  html += '<div class="flashcards-nav-side">';
+  if (flashcardState.currentCardIndex > 0) {
+    html += '<button class="flashcard-nav-btn flashcard-nav-side-btn" onclick="previousFlashcard()" title="Previous"><i class="fas fa-chevron-left"></i></button>';
+  } else {
+    html += '<button class="flashcard-nav-btn flashcard-nav-side-btn" disabled><i class="fas fa-chevron-left"></i></button>';
+  }
   html += '</div>';
   
-  // Main card section
+  // Card in center
   html += '<div class="flashcards-main">';
   html += '<div class="card-wrapper">';
   html += `<div id="card" class="flashcard ${isFlipped ? 'flipped' : ''}" onclick="toggleFlashcardFlip()">`;
@@ -892,27 +898,22 @@ function renderFlashcards(container) {
   html += '</div>'; // end card-wrapper
   html += '</div>'; // end flashcards-main
   
-  // Navigation section
-  html += '<div class="flashcards-nav">';
-  
-  // Previous button
-  if (flashcardState.currentCardIndex > 0) {
-    html += '<button class="flashcard-nav-btn" onclick="previousFlashcard()" title="Previous"><i class="fas fa-chevron-left"></i></button>';
-  } else {
-    html += '<button class="flashcard-nav-btn" disabled><i class="fas fa-chevron-left"></i></button>';
-  }
-  
-  // Card indicator
-  html += `<div class="flashcard-indicator">${currentIndex} / ${totalCards}</div>`;
-  
-  // Next button
+  // Next button (right)
+  html += '<div class="flashcards-nav-side">';
   if (flashcardState.currentCardIndex < totalCards - 1) {
-    html += '<button class="flashcard-nav-btn" onclick="nextFlashcard()" title="Next"><i class="fas fa-chevron-right"></i></button>';
+    html += '<button class="flashcard-nav-btn flashcard-nav-side-btn" onclick="nextFlashcard()" title="Next"><i class="fas fa-chevron-right"></i></button>';
   } else {
-    html += '<button class="flashcard-nav-btn" disabled><i class="fas fa-chevron-right"></i></button>';
+    html += '<button class="flashcard-nav-btn flashcard-nav-side-btn" disabled><i class="fas fa-chevron-right"></i></button>';
   }
+  html += '</div>';
   
-  html += '</div>'; // end flashcards-nav
+  html += '</div>'; // end flashcards-main-layout
+  
+  // Progress section below card
+  html += '<div class="flashcards-progress-bottom">';
+  html += `<div class="progress-info">Card <strong>${currentIndex}</strong> of <strong>${totalCards}</strong></div>`;
+  html += `<div class="progress-bar"><div class="progress-fill" style="width: ${progress}%"></div></div>`;
+  html += '</div>';
   
   html += '</div>'; // end flashcards-container
   
