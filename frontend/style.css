@@ -1278,8 +1278,8 @@ input:checked + .toggle-slider:before {
   top: 0;
 }
 
-.tool-controls > *:not(.button-generate):not(.control-group) {
-  display: none;
+.tool-controls > .feature-description {
+  display: none !important;
 }
 
 .tool-controls .button-generate {
@@ -1296,8 +1296,8 @@ input:checked + .toggle-slider:before {
   border-bottom: none;
 }
 
-.tool-controls.centered > *:not(.button-generate):not(.control-group) {
-  display: block;
+.tool-controls.centered > .feature-description {
+  display: block !important;
 }
 
 .tool-controls.centered .button-generate {
@@ -1331,7 +1331,6 @@ input:checked + .toggle-slider:before {
   text-align: center;
   max-width: 400px;
   line-height: 1.6;
-  display: none;
 }
 
 .tool-controls.centered .feature-description {
@@ -1343,6 +1342,7 @@ input:checked + .toggle-slider:before {
   flex-direction: row;
   align-items: center;
   gap: var(--spacing-md);
+  flex-shrink: 0;
 }
 
 .control-group label {
@@ -1353,6 +1353,7 @@ input:checked + .toggle-slider:before {
   align-items: center;
   gap: 0.5rem;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .control-group label i {
