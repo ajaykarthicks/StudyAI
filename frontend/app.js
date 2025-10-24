@@ -223,13 +223,26 @@ async function signOut() {
 
 function updateUserInfo() {
   const userInfoElements = document.querySelectorAll('#user-info-header');
+  const userInfoMobile = document.getElementById('user-info-mobile');
+  
   if (appState.user) {
+    // Desktop header
     userInfoElements.forEach(el => {
       el.innerHTML = `
         <img src="${appState.user.picture}" alt="${appState.user.name}" style="width: 32px; height: 32px; border-radius: 50%; margin-right: 8px;">
         <span>${appState.user.given_name}</span>
       `;
     });
+    
+    // Mobile navbar-left display
+    if (userInfoMobile) {
+      userInfoMobile.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <img src="${appState.user.picture}" alt="${appState.user.name}" style="width: 32px; height: 32px; border-radius: 50%;">
+          <span style="font-size: 0.85rem; font-weight: 500; color: var(--text-primary);">${appState.user.given_name}</span>
+        </div>
+      `;
+    }
   }
   
   // Update user dropdown with new design
