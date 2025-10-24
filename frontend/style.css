@@ -1775,7 +1775,7 @@ input:checked + .toggle-slider:before {
     gap: 0.75rem;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     position: sticky;
     top: 0;
     z-index: 10;
@@ -1783,6 +1783,7 @@ input:checked + .toggle-slider:before {
     display: flex;
     align-items: center;
     flex-direction: row;
+    justify-content: space-between;
   }
   
   .control-group {
@@ -1790,6 +1791,7 @@ input:checked + .toggle-slider:before {
     align-items: center;
     gap: 0.5rem;
     flex-direction: row;
+    flex-wrap: nowrap;
   }
   
   .control-group label {
@@ -1811,6 +1813,7 @@ input:checked + .toggle-slider:before {
     border: 1px solid var(--border);
     background: var(--background);
     color: var(--text-primary);
+    flex-shrink: 0;
   }
   
   .control-group input:focus {
@@ -1825,6 +1828,7 @@ input:checked + .toggle-slider:before {
     min-height: 44px;
     white-space: nowrap;
     flex-shrink: 0;
+    margin-left: auto;
   }
   
   .tool-controls.right-aligned {
