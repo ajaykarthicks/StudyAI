@@ -93,6 +93,28 @@
       <div class="navbar-center" id="navbar-center">
         <!-- Tool header will be dynamically inserted here -->
       </div>
+
+      <!-- Mobile header (visible only on small screens) -->
+      <div class="mobile-header" id="mobile-header" aria-hidden="true">
+        <div class="mobile-left">
+          <div class="logo-small">
+            <i class="fas fa-brain"></i>
+            <span>StudyAI</span>
+          </div>
+        </div>
+        <div class="mobile-center">
+          <button id="mobile-pdf-button" class="button-upload-mobile" onclick="togglePdfDropdownMobile(event)">
+            <span id="mobile-pdf-button-label">Upload PDF</span>
+            <i class="fas fa-chevron-down mobile-pdf-arrow"></i>
+          </button>
+          <div id="mobile-pdf-dropdown" class="mobile-pdf-dropdown" style="display:none"></div>
+        </div>
+        <div class="mobile-right">
+          <button class="button-logout" onclick="signOut()" title="Logout">
+            <i class="fas fa-sign-out-alt"></i>
+          </button>
+        </div>
+      </div>
       <div class="navbar-right">
         <div id="user-info-header" class="user-info-header"></div>
         <!-- PDF Upload Dropdown Button -->
@@ -177,8 +199,8 @@
         </div>
       </aside>
 
-      <!-- Right Content Area - 4 parts -->
-      <main class="content-area">
+  <!-- Right Content Area - 4 parts -->
+  <main class="content-area">
         <!-- Chat Tool -->
         <section id="chatbot-content" class="tool-content active">
           <div class="chat-container">
@@ -236,6 +258,15 @@
           <div id="flashcards-result" class="result-box"></div>
         </section>
       </main>
+      
+      <!-- Mobile tools bar & brief area (mobile-only) -->
+      <div id="mobile-tools-bar" class="mobile-tools-bar" aria-hidden="true">
+        <!-- Tools buttons injected by JS -->
+      </div>
+
+      <div id="mobile-brief" class="mobile-brief" aria-hidden="true">
+        <div id="mobile-brief-text">Select a tool to see a short description</div>
+      </div>
     </div>
   </div>
 

@@ -66,6 +66,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Regular page load - check if already authenticated
     checkAuth();
   }
+  // Mobile UI initial render
+  setTimeout(() => {
+    renderMobilePdfButton();
+    renderMobileToolsBar();
+  }, 200);
 });
 
 // ============================================
@@ -392,6 +397,8 @@ function updatePdfCountDisplay() {
   
   // Update dropdown menu
   updatePdfDropdown();
+  // Update mobile pdf button if present
+  if (typeof renderMobilePdfButton === 'function') renderMobilePdfButton();
 }
 
 function updatePdfDropdown() {
@@ -428,6 +435,128 @@ function updatePdfDropdown() {
     dropdownList.appendChild(pdfItem);
   });
 }
+
+// ========== MOBILE UI HELPERS ==========
+function renderMobilePdfButton() {
+  const labelElem = document.getElementById('mobile-pdf-button-label');
+  if (!labelElem) return;
+  const count = appState.pdfsList.length;
+  if (count === 0) {
+    labelElem.textContent = 'Upload PDF';
+  } else if (count === 1) {
+    labelElem.textContent = '1 PDF uploaded';
+  } else {
+    labelElem.textContent = `${count} PDFs uploaded`;
+  }
+}
+
+function togglePdfDropdownMobile(e) {
+  e.stopPropagation();
+  const dropdown = document.getElementById('mobile-pdf-dropdown');
+  if (!dropdown) return;
+  if (dropdown.style.display === 'none' || dropdown.style.display === '') {
+    renderMobilePdfDropdown();
+    dropdown.style.display = 'block';
+  } else {
+    dropdown.style.display = 'none';
+  }
+}
+
+function renderMobilePdfDropdown() {
+  const dropdown = document.getElementById('mobile-pdf-dropdown');
+  if (!dropdown) return;
+  dropdown.innerHTML = '';
+  if (appState.pdfsList.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'pdf-item-mobile';
+    empty.textContent = 'No PDFs uploaded';
+    dropdown.appendChild(empty);
+    return;
+  }
+
+  appState.pdfsList.forEach((pdf, idx) => {
+    const item = document.createElement('div');
+    item.className = 'pdf-item-mobile';
+    const left = document.createElement('div');
+    left.style.flex = '1';
+    left.style.overflow = 'hidden';
+    left.style.whiteSpace = 'nowrap';
+    left.style.textOverflow = 'ellipsis';
+    left.textContent = pdf.name;
+
+    const right = document.createElement('div');
+    right.style.display = 'flex';
+    right.style.gap = '8px';
+
+    const selectBtn = document.createElement('button');
+    selectBtn.className = 'button-secondary';
+    selectBtn.textContent = 'Select';
+    selectBtn.onclick = () => { selectPdf(idx); document.getElementById('mobile-pdf-dropdown').style.display = 'none'; };
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'dropdown-pdf-delete';
+    delBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+    delBtn.onclick = (ev) => { ev.stopPropagation(); deletePdfMobile(idx); };
+
+    right.appendChild(selectBtn);
+    right.appendChild(delBtn);
+
+    item.appendChild(left);
+    item.appendChild(right);
+    dropdown.appendChild(item);
+  });
+}
+
+function deletePdfMobile(index) {
+  if (appState.pdfsList.length === 1) {
+    if (!confirm('Delete last PDF? This will remove all uploaded PDFs.')) return;
+  }
+  const pdfName = appState.pdfsList[index].name;
+  appState.pdfsList.splice(index, 1);
+  if (appState.selectedPdfIndex >= appState.pdfsList.length) appState.selectedPdfIndex = Math.max(0, appState.pdfsList.length - 1);
+  localStorage.setItem('pdfs_backup', JSON.stringify(appState.pdfsList));
+  updatePdfCountDisplay();
+  renderMobilePdfDropdown();
+  renderMobilePdfButton();
+  console.log('Deleted PDF (mobile):', pdfName);
+}
+
+function renderMobileToolsBar() {
+  const container = document.getElementById('mobile-tools-bar');
+  if (!container) return;
+  container.innerHTML = '';
+  const tools = [
+    { id: 'chatbot', icon: 'fas fa-comment-dots', label: 'Chat' },
+    { id: 'summarizer', icon: 'fas fa-file-alt', label: 'Summarize' },
+    { id: 'quiz', icon: 'fas fa-question-circle', label: 'Quiz' },
+    { id: 'flashcards', icon: 'fas fa-layer-group', label: 'Flashcards' }
+  ];
+  tools.forEach(t => {
+    const btn = document.createElement('button');
+    btn.className = 'mobile-tool-btn';
+    btn.innerHTML = `<i class="${t.icon}"></i><span>${t.label}</span>`;
+    btn.onclick = () => {
+      // find the sidebar item for visual sync if present
+      const sidebarItem = Array.from(document.querySelectorAll('.tool-menu-item')).find(i => i.textContent.includes(t.label));
+      if (sidebarItem) selectTool(t.id, sidebarItem);
+      else selectTool(t.id, document.querySelector('.tool-menu-item'));
+      document.getElementById('mobile-brief-text').textContent = (t.label === 'Chat') ? 'Ask questions about your PDF' : (t.label === 'Summarize') ? 'Get a concise summary' : (t.label === 'Quiz') ? 'Create multiple-choice practice questions' : 'Create interactive flashcards for quick revision';
+      // active state
+      document.querySelectorAll('.mobile-tool-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    };
+    container.appendChild(btn);
+  });
+}
+
+// Close mobile dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  const mobileDropdown = document.getElementById('mobile-pdf-dropdown');
+  const pdfBtn = document.getElementById('mobile-pdf-button');
+  if (mobileDropdown && pdfBtn && !mobileDropdown.contains(e.target) && !pdfBtn.contains(e.target)) {
+    mobileDropdown.style.display = 'none';
+  }
+});
 
 function togglePdfDropdown() {
   const menu = document.getElementById('pdf-dropdown-menu');
@@ -563,6 +692,56 @@ function updateNavbarHeader(toolName) {
 // CHAT INTERFACE
 // ============================================
 
+// Render a small regenerate control inside result boxes and wire it to the appropriate handler
+function showRegenerate(toolName) {
+  const map = {
+    summarizer: { boxId: 'summarizer-result', handler: handleSummarize },
+    quiz: { boxId: 'quiz-result', handler: handleQuiz },
+    flashcards: { boxId: 'flashcards-result', handler: handleFlashcards },
+    chatbot: { boxId: 'chatbot-result', handler: handleChat }
+  };
+
+  const info = map[toolName];
+  if (!info) return;
+
+  const box = document.getElementById(info.boxId);
+  if (!box) return;
+
+  // Ensure box is positioned so the control can be placed absolutely
+  const prevPosition = box.style.position;
+  if (!prevPosition || prevPosition === '') box.style.position = 'relative';
+
+  // Remove existing control if present
+  const existing = box.querySelector('.regenerate-control');
+  if (existing) return; // already shown
+
+  const ctrl = document.createElement('div');
+  ctrl.className = 'regenerate-control';
+  ctrl.style.position = 'absolute';
+  ctrl.style.top = '8px';
+  ctrl.style.right = '8px';
+  ctrl.style.zIndex = '50';
+
+  const btn = document.createElement('button');
+  btn.className = 'button-icon';
+  btn.title = 'Regenerate';
+  btn.innerHTML = '<i class="fas fa-redo"></i>';
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    // Optionally show small loading indicator
+    btn.disabled = true;
+    setTimeout(() => { btn.disabled = false; }, 1500);
+    try {
+      info.handler();
+    } catch (err) {
+      console.error('Regenerate handler error:', err);
+    }
+  };
+
+  ctrl.appendChild(btn);
+  box.appendChild(ctrl);
+}
+
 async function handleChat() {
   const question = document.getElementById('chatbot-question').value;
   if (!question) {
@@ -657,6 +836,8 @@ async function handleSummarize() {
     if (!response.ok) throw new Error(data.error || 'Failed to summarize');
     
     resultBox.textContent = data.summary;
+  // show regenerate control for mobile
+  showRegenerate('summarizer');
     console.log('✅ Summary generated');
   } catch (error) {
     resultBox.textContent = `Error: ${error.message}`;
@@ -703,6 +884,7 @@ async function handleQuiz() {
       quizState.userAnswers = {};
       quizState.showAnswers = {};
       renderInteractiveQuiz(resultBox);
+      showRegenerate('quiz');
     } else {
       resultBox.textContent = data.quiz_text || 'No quiz generated';
     }
@@ -844,6 +1026,7 @@ async function handleFlashcards() {
       flashcardState.currentCardIndex = 0;
       flashcardState.flipped = {};
       renderFlashcards(resultBox);
+      showRegenerate('flashcards');
     } else {
       resultBox.textContent = data.flashcards_text || 'No flashcards generated';
     }

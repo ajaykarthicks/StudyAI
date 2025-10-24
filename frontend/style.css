@@ -428,6 +428,169 @@ body {
   justify-content: flex-end;
 }
 
+/* ========== MOBILE-SPECIFIC LAYOUT ========== */
+/* Hide desktop sidebar and show mobile header, tools bar and brief area */
+@media (max-width: 900px) {
+  .sidebar {
+    display: none !important;
+  }
+
+  .dashboard-container {
+    grid-template-columns: 1fr;
+  }
+
+  /* Show mobile header and hide the regular navbar-center when necessary */
+  .mobile-header {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-sm) var(--spacing-md);
+    gap: var(--spacing-md);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .mobile-header .logo-small {
+    font-size: 1rem;
+    gap: var(--spacing-sm);
+  }
+
+  .mobile-left, .mobile-center, .mobile-right {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+  }
+
+  .button-upload-mobile {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    background: linear-gradient(135deg,var(--primary),var(--secondary));
+    color: #fff;
+    border: none;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+
+  .mobile-pdf-dropdown {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: 56px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    width: calc(100% - 40px);
+    max-height: 260px;
+    overflow-y: auto;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    z-index: 40;
+  }
+
+  .mobile-pdf-dropdown .pdf-item-mobile {
+    display:flex;
+    justify-content:space-between;
+    padding: 10px 12px;
+    align-items:center;
+    border-bottom:1px solid var(--border);
+  }
+
+  .mobile-tools-bar {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 10px 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-tools-bar .mobile-tool-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .mobile-tools-bar .mobile-tool-btn.active {
+    background: linear-gradient(135deg,var(--primary),var(--secondary));
+    color: #fff;
+  }
+
+  .mobile-brief {
+    display: block;
+    padding: 12px;
+    background: var(--background);
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* make content-area use full height and remove desktop paddings */
+  .content-area {
+    padding: 0;
+    gap: 0;
+    height: calc(100vh - 116px);
+  }
+
+  .tool-controls {
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+  }
+
+  .result-box {
+    padding: var(--spacing-md);
+  }
+
+  /* central generate button style for mobile */
+  .button-generate {
+    width: 92%;
+    margin: 18px auto;
+    display: block;
+    text-align: center;
+    font-size: 1rem;
+    padding: 13px 16px;
+    border-radius: 10px;
+  }
+
+  /* regenerate small button top-right inside result-box */
+  .regenerate-button {
+    position: absolute;
+    right: 12px;
+    top: 12px;
+    background: rgba(255,255,255,0.95);
+    border: 1px solid var(--border);
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+    z-index: 20;
+  }
+
+  /* Flashcard answer side: remove extra overlay / patch
+     ensure the answer side is clean and readable */
+  .card-backing .grain-overlay {
+    display: none !important;
+  }
+
+  /* Ensure card occupies max area on mobile */
+  .card-scene { padding: var(--spacing-md); }
+  .card { border-radius: 12px; }
+}
+
 .logo-small {
   display: flex;
   align-items: center;
