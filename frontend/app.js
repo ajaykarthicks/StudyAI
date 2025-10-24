@@ -517,6 +517,46 @@ function selectTool(toolName, element) {
     content.classList.remove('active');
   });
   document.getElementById(`${toolName}-content`).classList.add('active');
+  
+  // Update navbar header
+  updateNavbarHeader(toolName);
+}
+
+// Update navbar with current tool info
+function updateNavbarHeader(toolName) {
+  const navbarCenter = document.getElementById('navbar-center');
+  const toolInfo = {
+    chatbot: {
+      icon: 'fas fa-comment-dots',
+      title: 'Chat with PDF',
+      description: 'Ask any question about your PDF and get instant answers'
+    },
+    summarizer: {
+      icon: 'fas fa-file-alt',
+      title: 'Summarize',
+      description: 'Get a concise summary of the entire document'
+    },
+    quiz: {
+      icon: 'fas fa-question-circle',
+      title: 'Quiz Generator',
+      description: 'Create multiple-choice practice questions'
+    },
+    flashcards: {
+      icon: 'fas fa-layer-group',
+      title: 'Flashcards',
+      description: 'Create interactive flashcards for quick revision'
+    }
+  };
+  
+  const tool = toolInfo[toolName];
+  if (tool) {
+    navbarCenter.innerHTML = `
+      <div class="navbar-tool-info">
+        <h2><i class="${tool.icon}"></i> ${tool.title}</h2>
+        <p>${tool.description}</p>
+      </div>
+    `;
+  }
 }
 
 // ============================================
@@ -829,16 +869,17 @@ function renderFlashcards(container) {
   html += '<div class="card-scene">';
   html += `<div id="card" class="card ${isFlipped ? 'card--flipped' : ''}" onclick="toggleFlashcardFlip()">`;
   
-  // Card Backing (Back Side)
+  // Card Backing (Back Side - Answer)
   html += '<div class="card-face card-backing">';
   html += '<div class="grain-overlay"></div>';
   html += '<div class="top-banner"></div>';
   html += '<div class="back-main">';
-  html += '<span>ANSWER</span>';
+  html += '<h1 style="margin: 0 0 var(--spacing-lg) 0; font-size: 1.2rem;">Answer</h1>';
+  html += `<div class="card-content" style="flex: 1; display: flex; align-items: center; justify-content: center; text-align: center;">${escapeHtml(card.back)}</div>`;
   html += '</div>';
   html += '</div>';
   
-  // Card Front (Front Side)
+  // Card Front (Front Side - Question)
   html += '<div class="card-face card-front">';
   html += '<h1>Question</h1>';
   html += `<div class="card-content">${escapeHtml(card.front)}</div>`;
