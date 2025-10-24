@@ -109,9 +109,23 @@
             <div id="pdf-list-dropdown" style="max-height: 300px; overflow-y: auto;"></div>
           </div>
         </div>
-        <div id="user-info-header" class="user-info-header"></div>
-        <button class="button-logout" onclick="signOut()">
-          <i class="fas fa-sign-out-alt"></i>
+        <!-- User Profile Dropdown -->
+        <div class="dropdown dropdown-user">
+          <button class="button-icon-only" onclick="toggleUserDropdown()">
+            <i class="fas fa-user-circle"></i>
+          </button>
+          <div id="user-dropdown-menu" class="dropdown-menu dropdown-menu-right">
+            <div id="user-info-dropdown" class="user-info-dropdown"></div>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item" onclick="signOut()">
+              <i class="fas fa-sign-out-alt"></i>
+              <span>Logout</span>
+            </div>
+          </div>
+        </div>
+        <!-- Three Dot Menu -->
+        <button class="button-icon-only" onclick="toggleThreeDotsMenu()">
+          <i class="fas fa-ellipsis-v"></i>
         </button>
       </div>
     </header>
@@ -130,9 +144,7 @@
             </div>
             <div class="tool-label">
               <span class="tool-name">Chat</span>
-              <small>Ask questions</small>
             </div>
-            <i class="fas fa-chevron-right"></i>
           </div>
 
           <div class="tool-menu-item" onclick="selectTool('summarizer', this)">
@@ -141,9 +153,7 @@
             </div>
             <div class="tool-label">
               <span class="tool-name">Summarize</span>
-              <small>Quick overview</small>
             </div>
-            <i class="fas fa-chevron-right"></i>
           </div>
 
           <div class="tool-menu-item" onclick="selectTool('quiz', this)">
@@ -152,9 +162,7 @@
             </div>
             <div class="tool-label">
               <span class="tool-name">Quiz</span>
-              <small>Practice questions</small>
             </div>
-            <i class="fas fa-chevron-right"></i>
           </div>
 
           <div class="tool-menu-item" onclick="selectTool('flashcards', this)">
@@ -163,9 +171,7 @@
             </div>
             <div class="tool-label">
               <span class="tool-name">Flashcards</span>
-              <small>Quick revision</small>
             </div>
-            <i class="fas fa-chevron-right"></i>
           </div>
         </nav>
 

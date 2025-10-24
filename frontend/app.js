@@ -228,6 +228,20 @@ function updateUserInfo() {
       `;
     });
   }
+  
+  // Update user dropdown with new design
+  updateUserDropdown();
+}
+
+// Update User Dropdown with User Information
+function updateUserDropdown() {
+  const userInfoDropdown = document.getElementById('user-info-dropdown');
+  if (userInfoDropdown && appState.user) {
+    userInfoDropdown.innerHTML = `
+      <div class="user-name">${appState.user.name}</div>
+      <div class="user-id">ID: ${appState.user.sub || appState.user.email || 'Unknown'}</div>
+    `;
+  }
 }
 
 // ============================================
@@ -439,11 +453,40 @@ function closePdfDropdown() {
   menu.classList.remove('active');
 }
 
+// Toggle User Profile Dropdown
+function toggleUserDropdown() {
+  const menu = document.getElementById('user-dropdown-menu');
+  if (menu) {
+    menu.classList.toggle('active');
+  }
+}
+
+// Close User Dropdown
+function closeUserDropdown() {
+  const menu = document.getElementById('user-dropdown-menu');
+  if (menu) {
+    menu.classList.remove('active');
+  }
+}
+
+// Toggle Three-Dot Menu (placeholder for future functionality)
+function toggleThreeDotsMenu() {
+  // Placeholder - can be used for settings, help, or other options in the future
+  console.log('Three-dot menu clicked - awaiting definition');
+}
+
 // Close dropdown when clicking outside
 document.addEventListener('click', (e) => {
+  // Close PDF dropdown
   const dropdown = document.querySelector('.dropdown');
   if (dropdown && !dropdown.contains(e.target)) {
     closePdfDropdown();
+  }
+  
+  // Close user dropdown
+  const userDropdown = document.querySelector('.dropdown-user');
+  if (userDropdown && !userDropdown.contains(e.target)) {
+    closeUserDropdown();
   }
 });
 

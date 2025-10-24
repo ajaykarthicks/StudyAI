@@ -570,6 +570,65 @@ body {
   margin: var(--spacing-sm) 0;
 }
 
+/* ============================================
+   ICON-ONLY BUTTONS (New Navbar)
+   ============================================ */
+
+.button-icon-only {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  transition: var(--transition);
+  border-radius: var(--radius-lg);
+}
+
+.button-icon-only:hover {
+  color: var(--primary);
+  background: rgba(0, 212, 255, 0.1);
+}
+
+.button-icon-only:active {
+  background: rgba(0, 212, 255, 0.15);
+}
+
+/* User Profile Dropdown Container */
+.dropdown-user {
+  position: relative;
+}
+
+/* Right-aligned Dropdown Menu */
+.dropdown-menu-right {
+  right: 0;
+  left: auto;
+}
+
+/* User Info Dropdown Styling */
+.user-info-dropdown {
+  padding: var(--spacing-md) var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.user-info-dropdown .user-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.user-info-dropdown .user-id {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
 .dropdown-pdf-item {
   display: flex;
   align-items: center;
@@ -842,19 +901,29 @@ body {
   width: 40px;
   height: 40px;
   border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--text-secondary);
   flex-shrink: 0;
   pointer-events: auto;
+  transition: var(--transition);
 }
 
 .tool-icon i {
   font-size: 1.5rem;
-  color: white;
+  color: var(--text-secondary);
   pointer-events: none;
+  transition: var(--transition);
+}
+
+.tool-menu-item:hover .tool-icon i {
+  color: var(--primary);
+}
+
+.tool-menu-item.active .tool-icon i {
+  color: var(--primary);
 }
 
 .tool-label {
