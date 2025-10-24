@@ -1080,8 +1080,8 @@ function renderFlashcards(container) {
   // Main card section with side navigation
   html += '<div class="flashcards-main-layout">';
   
-  // Previous button (left)
-  html += '<div class="flashcards-nav-side">';
+  // Previous button (left) - hidden on mobile
+  html += '<div class="flashcards-nav-side flashcards-nav-desktop">';
   if (flashcardState.currentCardIndex > 0) {
     html += '<button class="flashcard-nav-btn flashcard-nav-side-btn" onclick="previousFlashcard()" title="Previous"><i class="fas fa-chevron-left"></i></button>';
   } else {
@@ -1112,8 +1112,8 @@ function renderFlashcards(container) {
   html += '</div>'; // end card-wrapper
   html += '</div>'; // end flashcards-main
   
-  // Next button (right)
-  html += '<div class="flashcards-nav-side">';
+  // Next button (right) - hidden on mobile
+  html += '<div class="flashcards-nav-side flashcards-nav-desktop">';
   if (flashcardState.currentCardIndex < totalCards - 1) {
     html += '<button class="flashcard-nav-btn flashcard-nav-side-btn" onclick="nextFlashcard()" title="Next"><i class="fas fa-chevron-right"></i></button>';
   } else {
@@ -1123,11 +1123,30 @@ function renderFlashcards(container) {
   
   html += '</div>'; // end flashcards-main-layout
   
-  // Progress section below card
+  // Progress section below card with mobile navigation
   html += '<div class="flashcards-progress-bottom">';
+  
+  // Progress info and bar
+  html += '<div class="progress-section">';
   html += `<div class="progress-info">Card <strong>${cardNumber}</strong> of <strong>${totalCards}</strong></div>`;
   html += `<div class="progress-bar"><div class="progress-fill" style="width: ${progress}%"></div></div>`;
   html += '</div>';
+  
+  // Mobile navigation buttons (at bottom)
+  html += '<div class="flashcards-nav-mobile">';
+  if (flashcardState.currentCardIndex > 0) {
+    html += '<button class="flashcard-nav-btn flashcard-nav-mobile-btn" onclick="previousFlashcard()" title="Previous"><i class="fas fa-chevron-left"></i></button>';
+  } else {
+    html += '<button class="flashcard-nav-btn flashcard-nav-mobile-btn" disabled><i class="fas fa-chevron-left"></i></button>';
+  }
+  if (flashcardState.currentCardIndex < totalCards - 1) {
+    html += '<button class="flashcard-nav-btn flashcard-nav-mobile-btn" onclick="nextFlashcard()" title="Next"><i class="fas fa-chevron-right"></i></button>';
+  } else {
+    html += '<button class="flashcard-nav-btn flashcard-nav-mobile-btn" disabled><i class="fas fa-chevron-right"></i></button>';
+  }
+  html += '</div>';
+  
+  html += '</div>'; // end flashcards-progress-bottom
   
   html += '</div>'; // end flashcards-container
   

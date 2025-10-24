@@ -1599,6 +1599,13 @@ input:checked + .toggle-slider:before {
     justify-content: center;
     flex-shrink: 0;
   }
+
+  .tool-icon i {
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
   
   .tool-label {
     display: flex;
@@ -1810,6 +1817,62 @@ input:checked + .toggle-slider:before {
     height: 100%;
     overflow: hidden;
     flex-direction: column;
+  }
+
+  .flashcards-main-layout {
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+
+  .flashcards-nav-desktop {
+    display: none;
+  }
+
+  .flashcards-nav-mobile {
+    display: flex;
+  }
+
+  .flashcard-nav-mobile-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    border-radius: var(--radius-md);
+    border: 2px solid var(--border);
+    background: var(--surface);
+    color: var(--primary);
+    cursor: pointer;
+    font-size: 1.1rem;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .flashcard-nav-mobile-btn:hover:not(:disabled) {
+    transform: scale(1.1);
+    background: var(--primary);
+    color: white;
+  }
+
+  .flashcard-nav-mobile-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .flashcards-progress-bottom {
+    flex-shrink: 0;
+    padding: var(--spacing-md);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+
+  .progress-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
   }
   
   .flashcards-header {
@@ -2359,6 +2422,19 @@ input[type="text"]:focus, input[type="number"]:focus {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.flashcards-nav-desktop {
+  display: flex;
+}
+
+.flashcards-nav-mobile {
+  display: none;
+  gap: var(--spacing-md);
+  justify-content: center;
+  align-items: center;
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border);
 }
 
 .flashcard-nav-side-btn {
