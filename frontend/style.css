@@ -872,19 +872,20 @@ body {
 .content-area {
   flex: 1;
   overflow: hidden;
-  padding: var(--spacing-2xl);
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xl);
+  gap: 0;
 }
 
 .tool-content {
   display: none;
   animation: fadeIn 0.4s ease-in-out;
   height: 100%;
+  width: 100%;
   overflow: hidden;
   flex-direction: column;
-  gap: var(--spacing-lg);
+  gap: 0;
 }
 
 .tool-content.active {
@@ -893,7 +894,7 @@ body {
 
 .content-header {
   border-bottom: 1px solid var(--border);
-  padding-bottom: var(--spacing-lg);
+  padding: var(--spacing-lg) var(--spacing-2xl);
   flex-shrink: 0;
 }
 
@@ -1105,6 +1106,8 @@ body {
   border-left: 4px solid var(--primary);
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .result-box:empty::before {
@@ -1806,7 +1809,7 @@ input[type="text"]:focus, input[type="number"]:focus {
 .flashcards-container {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-lg);
+  gap: 0;
   align-items: stretch;
   padding: 0;
   width: 100%;
@@ -2121,7 +2124,7 @@ input[type="text"]:focus, input[type="number"]:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--spacing-lg);
+  padding: 0;
   flex: 1;
   min-height: 0;
 }
@@ -2149,9 +2152,6 @@ input[type="text"]:focus, input[type="number"]:focus {
 .card {
   height: 100%;
   width: 100%;
-  max-width: 600px;
-  max-height: 500px;
-  aspect-ratio: auto;
   position: relative;
   transform-style: preserve-3d;
   transform: rotateY(180deg);
