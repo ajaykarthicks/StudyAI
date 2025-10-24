@@ -814,16 +814,42 @@ async function handleFlashcards() {
 
 function renderFlashcards(container) {
   const card = flashcardState.cards[flashcardState.currentCardIndex];
-  const isFlipped = flashcardState.flipped[flashcardState.currentCardIndex];
+  const isFlipped = flashcardState.flipped[flashcardState.currentCardIndex] || false;
   
-  let html = '<div class="flashcards-container">';
+  let html = '';
   
+  // Header with navigation and progress
+  html += '<div class="flashcards-container">';
   html += '<div class="flashcards-header">';
-  html += `<h3>Flashcards: ${flashcardState.cards.length}</h3>`;
+  html += `<h3>Flashcards</h3>`;
   html += `<span class="flashcard-counter">Card ${flashcardState.currentCardIndex + 1} of ${flashcardState.cards.length}</span>`;
   html += '</div>';
   
-  // Navigation Controls - Top
+  // Advanced 3D Card Template
+  html += '<div class="card-scene">';
+  html += `<div id="card" class="card ${isFlipped ? 'card--flipped' : ''}" onclick="toggleFlashcardFlip()">`;
+  
+  // Card Backing (Back Side)
+  html += '<div class="card-face card-backing">';
+  html += '<div class="grain-overlay"></div>';
+  html += '<div class="top-banner"></div>';
+  html += '<div class="back-main">';
+  html += '<span>ANSWER</span>';
+  html += '</div>';
+  html += '</div>';
+  
+  // Card Front (Front Side)
+  html += '<div class="card-face card-front">';
+  html += '<h1>Question</h1>';
+  html += `<div class="card-content">${escapeHtml(card.front)}</div>`;
+  html += '<div class="card-hint">Click card to reveal answer</div>';
+  html += '<div class="grain-overlay"></div>';
+  html += '</div>';
+  
+  html += '</div>'; // end card
+  html += '</div>'; // end card-scene
+  
+  // Navigation Controls
   html += '<div class="flashcards-top-controls">';
   
   if (flashcardState.currentCardIndex > 0) {
@@ -832,7 +858,7 @@ function renderFlashcards(container) {
     html += '<button class="arrow-button prev-arrow" disabled style="opacity: 0.3;"><i class="fas fa-chevron-left"></i></button>';
   }
   
-  html += '<span class="flip-hint">Click card to flip</span>';
+  html += `<span class="flip-hint">Card ${flashcardState.currentCardIndex + 1}/${flashcardState.cards.length}</span>`;
   
   if (flashcardState.currentCardIndex < flashcardState.cards.length - 1) {
     html += '<button class="arrow-button next-arrow" onclick="nextFlashcard()" title="Next card"><i class="fas fa-chevron-right"></i></button>';
@@ -842,35 +868,21 @@ function renderFlashcards(container) {
   
   html += '</div>';
   
-  // 3D Flip Card - Enhanced
-  html += `<div class="flip-card-wrapper-3d">`;
-  html += `<div class="flip-card-3d ${isFlipped ? 'flipped' : ''}" onclick="flipCard()">`;
-  html += `<div class="flip-card-inner-3d">`;
-  
-  // Front - Paper-like
-  html += `<div class="flip-card-front-3d">`;
-  html += `<div class="flip-card-label-3d front">Question</div>`;
-  html += `<div class="flip-card-content-3d">${card.front}</div>`;
-  html += `<div class="flip-card-shadow"></div>`;
-  html += `</div>`;
-  
-  // Back - Paper-like
-  html += `<div class="flip-card-back-3d">`;
-  html += `<div class="flip-card-label-3d back">Answer</div>`;
-  html += `<div class="flip-card-content-3d">${card.back}</div>`;
-  html += `<div class="flip-card-shadow"></div>`;
-  html += `</div>`;
-  
-  html += `</div>`;
-  html += `</div>`;
-  html += `</div>`;
-  
   // Progress Bar
   const progress = ((flashcardState.currentCardIndex + 1) / flashcardState.cards.length) * 100;
   html += `<div class="progress-bar"><div class="progress-fill" style="width: ${progress}%"></div></div>`;
   
-  html += '</div>';
+  html += '</div>'; // end flashcards-container
+  
   container.innerHTML = html;
+  
+  // Attach event listener to card after rendering
+  setTimeout(() => {
+    const cardElement = document.getElementById('card');
+    if (cardElement) {
+      cardElement.onclick = toggleFlashcardFlip;
+    }
+  }, 0);
 }
 
 function flipCard() {
@@ -879,28 +891,32 @@ function flipCard() {
   renderFlashcards(resultBox);
 }
 
-function toggleFlipCard() {
+function toggleFlashcardFlip() {
   flipCard();
 }
 
 function nextFlashcard() {
   if (flashcardState.currentCardIndex < flashcardState.cards.length - 1) {
-    const wrapper = document.querySelector('.flip-card-wrapper-3d');
-    if (wrapper) wrapper.classList.add('slide-exit-left');
-    
-    setTimeout(() => {
-      flashcardState.currentCardIndex++;
-      flashcardState.flipped[flashcardState.currentCardIndex] = false;
-      const resultBox = document.getElementById('flashcards-result');
-      renderFlashcards(resultBox);
-      
-      const newWrapper = document.querySelector('.flip-card-wrapper-3d');
-      if (newWrapper) {
-        newWrapper.classList.add('slide-enter-right');
-        setTimeout(() => newWrapper.classList.remove('slide-enter-right'), 500);
-      }
-    }, 300);
+    flashcardState.currentCardIndex++;
+    flashcardState.flipped[flashcardState.currentCardIndex] = false;
+    const resultBox = document.getElementById('flashcards-result');
+    renderFlashcards(resultBox);
   }
+}
+
+function previousFlashcard() {
+  if (flashcardState.currentCardIndex > 0) {
+    flashcardState.currentCardIndex--;
+    flashcardState.flipped[flashcardState.currentCardIndex] = false;
+    const resultBox = document.getElementById('flashcards-result');
+    renderFlashcards(resultBox);
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function previousFlashcard() {
