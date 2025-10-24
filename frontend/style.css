@@ -1555,7 +1555,7 @@ input:checked + .toggle-slider:before {
   }
   
   .navbar-tool-info {
-    display: flex;
+    display: none;
     flex-direction: column;
     gap: 0.25rem;
   }
