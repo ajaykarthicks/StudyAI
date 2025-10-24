@@ -1336,10 +1336,11 @@ input:checked + .toggle-slider:before {
   text-align: center;
   max-width: 400px;
   line-height: 1.6;
+  display: none !important;
 }
 
 .tool-controls.centered .feature-description {
-  display: block;
+  display: none !important;
 }
 
 .control-group {

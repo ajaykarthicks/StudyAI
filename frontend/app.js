@@ -32,6 +32,14 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('API_BASE_URL:', API_BASE_URL);
   console.log('Cookies:', document.cookie);
   
+  // Remove 'centered' class from tool-controls on desktop (PC mode)
+  if (window.innerWidth > 768) {
+    const toolControls = document.querySelectorAll('.tool-controls.centered');
+    toolControls.forEach(el => {
+      el.classList.remove('centered');
+    });
+  }
+  
   const urlParams = new URLSearchParams(window.location.search);
   
   // If redirected from OAuth callback with auth data, store it
