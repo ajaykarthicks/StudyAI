@@ -717,7 +717,7 @@ function renderInteractiveQuiz(container) {
   html += '<div class="quiz-header">';
   html += `<h3>Quiz: ${quizState.questions.length} Questions</h3>`;
   html += '<div class="quiz-actions">';
-  html += '<button class="button-secondary" onclick="showAllAnswers()"><i class="fas fa-eye"></i> Show All Answers</button>';
+  html += '<button class="button-show-all-answers" onclick="showAllAnswers()"><i class="fas fa-eye"></i> Show All Answers</button>';
   html += '</div>';
   html += '</div>';
   
@@ -757,23 +757,15 @@ function renderInteractiveQuiz(container) {
     });
     html += `</div>`;
     
-    if (isAnswered) {
+    // Show answer when showAllAnswers is activated (no individual toggle button)
+    if (showAnswer) {
       html += `<div class="quiz-answer-section">`;
-      if (!showAnswer) {
-        html += `<button class="button-tertiary" onclick="toggleAnswerDisplay(${i})">`;
-        html += `<i class="fas fa-lightbulb"></i> Show Answer`;
-        html += `</button>`;
-      } else {
-        html += `<div class="correct-answer">`;
-        html += `<strong>✓ Correct Answer: ${q.options[q.correct_answer_index]}</strong>`;
-        if (q.explanation) {
-          html += `<p>${q.explanation}</p>`;
-        }
-        html += `</div>`;
-        html += `<button class="button-tertiary" onclick="toggleAnswerDisplay(${i})">`;
-        html += `<i class="fas fa-times"></i> Hide Answer`;
-        html += `</button>`;
+      html += `<div class="correct-answer">`;
+      html += `<strong>✓ Correct Answer: ${q.options[q.correct_answer_index]}</strong>`;
+      if (q.explanation) {
+        html += `<p>${q.explanation}</p>`;
       }
+      html += `</div>`;
       html += `</div>`;
     }
     
@@ -853,6 +845,12 @@ async function handleFlashcards() {
 }
 
 function renderFlashcards(container) {
+  // Check if cards exist
+  if (!flashcardState.cards || flashcardState.cards.length === 0) {
+    container.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No flashcards generated yet</div>';
+    return;
+  }
+  
   const card = flashcardState.cards[flashcardState.currentCardIndex];
   const isFlipped = flashcardState.flipped[flashcardState.currentCardIndex] || false;
   const totalCards = flashcardState.cards.length;

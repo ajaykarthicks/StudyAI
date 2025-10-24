@@ -1974,6 +1974,36 @@ input[type="text"]:focus, input[type="number"]:focus {
   gap: var(--spacing-md);
 }
 
+.button-show-all-answers {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-radius: var(--radius-lg);
+  border: none;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: white;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: 0 4px 12px rgba(0, 212, 255, 0.2);
+}
+
+.button-show-all-answers:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 212, 255, 0.3);
+}
+
+.button-show-all-answers:active {
+  transform: translateY(0);
+}
+
+.button-show-all-answers i {
+  font-size: 1rem;
+}
+
 .quiz-question {
   background: var(--background);
   padding: var(--spacing-lg);
