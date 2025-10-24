@@ -1806,10 +1806,11 @@ input[type="text"]:focus, input[type="number"]:focus {
 .flashcards-container {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xl);
-  align-items: center;
-  padding: var(--spacing-lg);
+  gap: var(--spacing-lg);
+  align-items: stretch;
+  padding: 0;
   width: 100%;
+  height: 100%;
 }
 
 .flashcards-header {
@@ -1817,8 +1818,14 @@ input[type="text"]:focus, input[type="number"]:focus {
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  padding-bottom: var(--spacing-lg);
+  padding: var(--spacing-md);
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.flashcards-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
 }
 
 .flashcard-counter {
@@ -1833,9 +1840,10 @@ input[type="text"]:focus, input[type="number"]:focus {
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  max-width: 600px;
   gap: var(--spacing-lg);
-  margin-bottom: var(--spacing-lg);
+  padding: var(--spacing-md);
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
 }
 
 .flip-hint {
@@ -2086,12 +2094,12 @@ input[type="text"]:focus, input[type="number"]:focus {
 /* Progress Bar */
 .progress-bar {
   width: 100%;
-  max-width: 600px;
-  height: 6px;
+  height: 4px;
   background: var(--border);
-  border-radius: var(--radius-full);
+  border-radius: 0;
   overflow: hidden;
-  margin-top: var(--spacing-lg);
+  margin: 0;
+  flex-shrink: 0;
 }
 
 .progress-fill {
@@ -2106,11 +2114,16 @@ input[type="text"]:focus, input[type="number"]:focus {
 
 .card-scene {
   width: 100%;
-  max-width: 500px;
-  height: 400px;
+  height: 100%;
   perspective: 1500px;
   animation: cardAppear 1.4s forwards;
-  margin: 0 auto;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-lg);
+  flex: 1;
+  min-height: 0;
 }
 
 @keyframes cardAppear {
@@ -2136,6 +2149,9 @@ input[type="text"]:focus, input[type="number"]:focus {
 .card {
   height: 100%;
   width: 100%;
+  max-width: 600px;
+  max-height: 500px;
+  aspect-ratio: auto;
   position: relative;
   transform-style: preserve-3d;
   transform: rotateY(180deg);
