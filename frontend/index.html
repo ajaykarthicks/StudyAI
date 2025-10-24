@@ -58,15 +58,15 @@
         <div class="upload-icon">
           <i class="fas fa-file-pdf"></i>
         </div>
-        <h2>Upload Your PDF</h2>
-        <p>Select a PDF file to get started with AI-powered learning</p>
+        <h2>Upload Your PDFs</h2>
+        <p>Select one or more PDF files to get started with AI-powered learning</p>
         
         <div class="file-input-container">
-          <input type="file" id="main-pdf-file" accept="application/pdf" onchange="handleFileSelected()" />
+          <input type="file" id="main-pdf-file" accept="application/pdf" multiple onchange="handleFileSelected()" />
           <label for="main-pdf-file" class="file-input-label">
             <i class="fas fa-cloud-upload-alt"></i>
             <span id="file-label-text">Click to upload or drag and drop</span>
-            <small>PDF up to 50MB</small>
+            <small>PDF files up to 50MB each</small>
           </label>
         </div>
         
@@ -103,8 +103,23 @@
       <!-- Left Sidebar - 1 part -->
       <aside class="sidebar">
         <div class="sidebar-header">
-          <h3>AI Tools</h3>
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <h3>AI Tools</h3>
+            <button class="icon-button" onclick="addMorePdfs()" title="Add more PDFs">
+              <i class="fas fa-plus"></i>
+            </button>
+          </div>
         </div>
+        
+        <!-- PDF List -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">
+            <i class="fas fa-book"></i>
+            <span>Documents</span>
+          </div>
+          <div id="pdf-list" class="pdf-list"></div>
+        </div>
+        
         <nav class="tools-menu">
           <div class="tool-menu-item active" onclick="selectTool('chatbot', this)">
             <div class="tool-icon">

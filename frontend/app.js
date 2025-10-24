@@ -5,12 +5,22 @@ const API_BASE_URL = 'https://studyai-production.up.railway.app';
 // ============================================
 
 let appState = {
-  currentFileName: '',
   isAuthenticated: false,
   user: null,
   chatHistory: [],
-  pdfText: '', // Store PDF text client-side
-  pdfBase64: '' // Store PDF as Base64 for requests
+  pdfsList: [], // Array of {name, text, base64}
+  selectedPdfIndex: 0, // Index of currently selected PDF
+  
+  // Convenience getters
+  get currentFileName() {
+    return this.pdfsList.length > 0 ? this.pdfsList[this.selectedPdfIndex].name : '';
+  },
+  get pdfText() {
+    return this.pdfsList.length > 0 ? this.pdfsList[this.selectedPdfIndex].text : '';
+  },
+  get pdfBase64() {
+    return this.pdfsList.length > 0 ? this.pdfsList[this.selectedPdfIndex].base64 : '';
+  }
 };
 
 // ============================================
@@ -234,6 +244,10 @@ function showPage(pageId) {
   if (pageId === 'dashboard') {
     appState.chatHistory = [];
     document.getElementById('chat-history').innerHTML = '';
+    // Restore PDFs from localStorage when showing dashboard
+    setTimeout(() => {
+      updatePdfList();
+    }, 100);
   }
 }
 
@@ -256,10 +270,10 @@ function handleFileSelected() {
   const fileLabel = document.getElementById('file-label-text');
   
   if (fileInput.files.length > 0) {
-    const fileName = fileInput.files[0].name;
-    fileLabel.textContent = fileName;
+    const fileCount = fileInput.files.length;
+    const filesText = fileCount === 1 ? '1 file' : `${fileCount} files`;
+    fileLabel.textContent = filesText + ' selected';
     uploadBtn.disabled = false;
-    appState.currentFileName = fileName;
   } else {
     fileLabel.textContent = 'Click to upload or drag and drop';
     uploadBtn.disabled = true;
@@ -269,55 +283,193 @@ function handleFileSelected() {
 async function handleMainUpload() {
   const fileInput = document.getElementById('main-pdf-file');
   if (fileInput.files.length === 0) {
-    alert('Please select a PDF file first.');
+    alert('Please select PDF files first.');
     return;
   }
 
-  const file = fileInput.files[0];
-  console.log('🔼 Starting PDF upload:', file.name, 'Size:', file.size);
+  const files = Array.from(fileInput.files);
+  console.log('🔼 Starting upload of', files.length, 'PDF(s)');
   
-  const formData = new FormData();
-  formData.append('file', file);
+  let successCount = 0;
+  let errorCount = 0;
 
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/upload-pdf`, {
-      method: 'POST',
-      body: formData,
-      credentials: 'include',
-    });
+  for (const file of files) {
+    console.log('📤 Uploading:', file.name, 'Size:', file.size);
     
-    console.log('📦 Upload response status:', response.status);
-    const data = await response.json();
-    console.log('📊 Upload response data:', {
-      message: data.message,
-      text_length: data.text_length,
-      has_pdf_text: !!data.pdf_text,
-      has_pdf_base64: !!data.pdf_base64
-    });
-    
-    if (!response.ok) throw new Error(data.error || 'Upload failed');
-    
-    // Store PDF text in appState for later use
-    appState.pdfText = data.pdf_text;
-    appState.pdfBase64 = data.pdf_base64;
-    appState.currentFileName = file.name;
-    
-    console.log('✅ PDF stored in appState:', {
-      pdfText_length: appState.pdfText ? appState.pdfText.length : 0,
-      currentFileName: appState.currentFileName
-    });
-    
-    // Also store in localStorage as backup
-    localStorage.setItem('pdf_text_backup', appState.pdfText);
-    localStorage.setItem('pdf_filename_backup', file.name);
-    
-    document.getElementById('current-file-name').textContent = appState.currentFileName;
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/upload-pdf`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      
+      console.log('📦 Upload response status:', response.status);
+      const data = await response.json();
+      
+      if (!response.ok) throw new Error(data.error || 'Upload failed');
+      
+      // Add PDF to appState.pdfsList
+      appState.pdfsList.push({
+        name: file.name,
+        text: data.pdf_text,
+        base64: data.pdf_base64
+      });
+      
+      // Auto-select the first PDF
+      if (appState.pdfsList.length === 1) {
+        appState.selectedPdfIndex = 0;
+      }
+      
+      console.log('✅ PDF added to list:', {
+        fileName: file.name,
+        textLength: data.pdf_text.length,
+        totalPdfs: appState.pdfsList.length
+      });
+      
+      successCount++;
+    } catch (error) {
+      console.error('❌ Upload error for', file.name, ':', error);
+      errorCount++;
+    }
+  }
+  
+  // Store in localStorage as backup
+  localStorage.setItem('pdfs_backup', JSON.stringify(appState.pdfsList));
+  localStorage.setItem('selectedPdfIndex_backup', appState.selectedPdfIndex);
+  
+  // Update UI
+  updatePdfList();
+  
+  if (errorCount > 0) {
+    alert(`Uploaded ${successCount} file(s) successfully. ${errorCount} file(s) failed.`);
+  } else {
+    alert(`Uploaded ${successCount} PDF(s) successfully!`);
+  }
+  
+  if (successCount > 0) {
     showPage('dashboard');
     selectTool('chatbot', document.querySelector('.tool-menu-item'));
-  } catch (error) {
-    console.error('❌ Upload error:', error);
-    alert(`Error: ${error.message}`);
   }
+}
+
+// ============================================
+// PDF MANAGEMENT
+// ============================================
+
+function restorePdfsFromStorage() {
+  try {
+    const pdfsBackup = localStorage.getItem('pdfs_backup');
+    if (pdfsBackup) {
+      appState.pdfsList = JSON.parse(pdfsBackup);
+      const selectedIndex = localStorage.getItem('selectedPdfIndex_backup');
+      if (selectedIndex !== null) {
+        appState.selectedPdfIndex = parseInt(selectedIndex);
+      }
+      console.log('✅ Restored PDFs from localStorage:', appState.pdfsList.length, 'PDFs');
+      updatePdfList();
+      return true;
+    }
+  } catch (e) {
+    console.error('Failed to restore PDFs:', e);
+  }
+  return false;
+}
+
+function updatePdfList() {
+  const pdfListContainer = document.getElementById('pdf-list');
+  if (!pdfListContainer) return; // Element not present in current view
+  
+  pdfListContainer.innerHTML = '';
+  
+  if (appState.pdfsList.length === 0) {
+    pdfListContainer.innerHTML = '<p style="color: #888; padding: 10px;">No PDFs uploaded yet</p>';
+    return;
+  }
+  
+  appState.pdfsList.forEach((pdf, index) => {
+    const pdfItem = document.createElement('div');
+    pdfItem.className = 'pdf-item';
+    if (index === appState.selectedPdfIndex) {
+      pdfItem.classList.add('selected');
+    }
+    
+    pdfItem.innerHTML = `
+      <div class="pdf-item-content" onclick="selectPdf(${index})">
+        <i class="fas fa-file-pdf"></i>
+        <span class="pdf-item-name">${pdf.name}</span>
+        <span class="pdf-item-size">(${(pdf.text.length / 1024).toFixed(1)} KB)</span>
+      </div>
+      <button class="pdf-item-delete" onclick="deletePdf(${index}, event)" title="Delete">
+        <i class="fas fa-times"></i>
+      </button>
+    `;
+    
+    pdfListContainer.appendChild(pdfItem);
+  });
+  
+  // Update current file name display
+  const currentFileNameEl = document.getElementById('current-file-name');
+  if (currentFileNameEl) {
+    currentFileNameEl.textContent = appState.currentFileName;
+  }
+}
+
+function selectPdf(index) {
+  if (index >= 0 && index < appState.pdfsList.length) {
+    appState.selectedPdfIndex = index;
+    console.log('📌 Selected PDF:', appState.currentFileName);
+    
+    // Update localStorage backup
+    localStorage.setItem('selectedPdfIndex_backup', appState.selectedPdfIndex);
+    
+    // Update UI
+    updatePdfList();
+    
+    // Show confirmation
+    const currentFileNameEl = document.getElementById('current-file-name');
+    if (currentFileNameEl) {
+      currentFileNameEl.textContent = `✓ ${appState.currentFileName}`;
+      setTimeout(() => {
+        currentFileNameEl.textContent = appState.currentFileName;
+      }, 1500);
+    }
+  }
+}
+
+function deletePdf(index, event) {
+  event.stopPropagation(); // Prevent triggering selectPdf
+  
+  if (appState.pdfsList.length === 1) {
+    alert('You must keep at least one PDF. Upload more before deleting.');
+    return;
+  }
+  
+  const pdfName = appState.pdfsList[index].name;
+  if (confirm(`Delete "${pdfName}"?`)) {
+    appState.pdfsList.splice(index, 1);
+    
+    // Adjust selected index if needed
+    if (appState.selectedPdfIndex >= appState.pdfsList.length) {
+      appState.selectedPdfIndex = appState.pdfsList.length - 1;
+    }
+    
+    // Update localStorage backup
+    localStorage.setItem('pdfs_backup', JSON.stringify(appState.pdfsList));
+    localStorage.setItem('selectedPdfIndex_backup', appState.selectedPdfIndex);
+    
+    console.log('🗑️ Deleted PDF:', pdfName);
+    updatePdfList();
+  }
+}
+
+function addMorePdfs() {
+  // Clear the file input and trigger it again for adding more PDFs
+  const fileInput = document.getElementById('main-pdf-file');
+  fileInput.value = ''; // Reset
+  fileInput.click();
 }
 
 // ============================================

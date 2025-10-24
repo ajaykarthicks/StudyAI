@@ -485,6 +485,131 @@ body {
   color: var(--text-light);
 }
 
+/* ============================================
+   PDF LIST STYLES
+   ============================================ */
+
+.sidebar-section {
+  border-top: 1px solid var(--border);
+  padding-top: var(--spacing-md);
+}
+
+.sidebar-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-light);
+  margin-bottom: var(--spacing-md);
+  padding: 0 var(--spacing-md);
+}
+
+.sidebar-section-title i {
+  color: var(--primary);
+}
+
+.pdf-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.pdf-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--background);
+  border-radius: var(--radius-md);
+  border: 2px solid transparent;
+  transition: var(--transition);
+  cursor: pointer;
+  gap: var(--spacing-sm);
+}
+
+.pdf-item:hover {
+  background: rgba(0, 212, 255, 0.05);
+  border-color: var(--primary);
+}
+
+.pdf-item.selected {
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.15), rgba(99, 102, 241, 0.1));
+  border-color: var(--primary);
+}
+
+.pdf-item-content {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.pdf-item-content i {
+  color: var(--secondary);
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.pdf-item-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pdf-item-size {
+  font-size: 0.75rem;
+  color: var(--text-light);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pdf-item-delete {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-light);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+}
+
+.pdf-item-delete:hover {
+  background: var(--error);
+  color: white;
+}
+
+.icon-button {
+  background: transparent;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-md);
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-button:hover {
+  background: rgba(0, 212, 255, 0.1);
+}
+
 .tools-menu {
   display: flex;
   flex-direction: column;
