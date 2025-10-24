@@ -866,7 +866,7 @@ body {
 }
 
 /* ============================================
-   CONTENT AREA
+   CONTENT AREA - FULL SCREEN LAYOUT
    ============================================ */
 
 .content-area {
@@ -875,7 +875,9 @@ body {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--background);
 }
 
 .tool-content {
@@ -886,6 +888,8 @@ body {
   overflow: hidden;
   flex-direction: column;
   gap: 0;
+  padding: 0;
+  background: var(--background);
 }
 
 .tool-content.active {
@@ -894,17 +898,20 @@ body {
 
 .content-header {
   border-bottom: 1px solid var(--border);
-  padding: var(--spacing-lg) var(--spacing-2xl);
+  padding: var(--spacing-lg) var(--spacing-xl);
   flex-shrink: 0;
+  background: var(--surface);
+  z-index: 10;
 }
 
 .content-header h2 {
-  font-size: 1.75rem;
-  margin-bottom: var(--spacing-md);
+  font-size: 1.5rem;
+  margin-bottom: var(--spacing-sm);
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
   color: var(--text-primary);
+  font-weight: 600;
 }
 
 .content-header h2 i {
@@ -913,21 +920,21 @@ body {
 
 .content-header p {
   color: var(--text-secondary);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+  margin: 0;
 }
 
 /* ============================================
-   CHAT INTERFACE
+   CHAT INTERFACE - FULL SCREEN
    ============================================ */
 
 .chat-container {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-lg);
-  background: var(--surface);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  height: 500px;
+  flex: 1;
+  overflow: hidden;
+  background: var(--background);
+  min-height: 0;
 }
 
 .chat-history {
@@ -937,6 +944,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
 }
 
 .chat-message {
@@ -964,6 +973,7 @@ body {
   padding: var(--spacing-md) var(--spacing-lg);
   border-radius: var(--radius-lg);
   word-wrap: break-word;
+  line-height: 1.6;
 }
 
 .user .chat-bubble {
@@ -972,7 +982,7 @@ body {
 }
 
 .assistant .chat-bubble {
-  background: var(--background);
+  background: var(--surface);
   color: var(--text-primary);
   border: 1px solid var(--border);
 }
@@ -983,6 +993,7 @@ body {
   padding: var(--spacing-lg);
   border-top: 1px solid var(--border);
   background: var(--surface);
+  flex-shrink: 0;
 }
 
 .chat-input {
@@ -1022,7 +1033,7 @@ body {
 }
 
 /* ============================================
-   TOOL CONTROLS
+   TOOL CONTROLS - COMPACT HEADER
    ============================================ */
 
 .tool-controls {
@@ -1030,10 +1041,11 @@ body {
   gap: var(--spacing-lg);
   align-items: flex-end;
   background: var(--surface);
-  padding: var(--spacing-lg);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
+  padding: var(--spacing-lg) var(--spacing-xl);
+  border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
+  flex-shrink: 0;
+  z-index: 9;
 }
 
 .control-group {
@@ -1049,13 +1061,13 @@ body {
 }
 
 .control-group input {
-  padding: var(--spacing-md) var(--spacing-lg);
+  padding: var(--spacing-sm) var(--spacing-md);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  font-size: 0.95rem;
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
   color: var(--text-primary);
   background: var(--background);
-  width: 120px;
+  width: 100px;
   transition: var(--transition);
 }
 
@@ -1067,11 +1079,11 @@ body {
 }
 
 .button-generate {
-  padding: var(--spacing-md) var(--spacing-2xl);
+  padding: var(--spacing-sm) var(--spacing-lg);
   background: linear-gradient(135deg, var(--primary), var(--secondary));
   color: white;
   border: none;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   font-weight: 600;
   cursor: pointer;
   display: flex;
@@ -1080,6 +1092,7 @@ body {
   gap: var(--spacing-md);
   transition: var(--transition);
   white-space: nowrap;
+  font-size: 0.95rem;
 }
 
 .button-generate:hover {
@@ -1088,20 +1101,23 @@ body {
 }
 
 /* ============================================
-   RESULT BOXES
+   RESULT BOXES - FULL SCREEN
    ============================================ */
 
 .result-box {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
+  background: var(--background);
+  border: none;
+  border-radius: 0;
+  padding: var(--spacing-lg) var(--spacing-xl);
   height: 100%;
+  flex: 1;
   overflow-y: auto;
   color: var(--text-primary);
   line-height: 1.8;
   font-size: 0.95rem;
   white-space: pre-wrap;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
   word-break: break-word;
   border-left: 4px solid var(--primary);
   display: flex;
@@ -1803,7 +1819,7 @@ input[type="text"]:focus, input[type="number"]:focus {
 }
 
 /* ============================================
-   FLASHCARD STYLES - ENHANCED 3D
+   FLASHCARD STYLES - FULL SCREEN
    ============================================ */
 
 .flashcards-container {
@@ -1814,6 +1830,7 @@ input[type="text"]:focus, input[type="number"]:focus {
   padding: 0;
   width: 100%;
   height: 100%;
+  overflow: hidden;
 }
 
 .flashcards-header {
@@ -1821,14 +1838,16 @@ input[type="text"]:focus, input[type="number"]:focus {
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  padding: var(--spacing-md);
+  padding: var(--spacing-lg) var(--spacing-xl);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  background: var(--surface);
 }
 
 .flashcards-header h3 {
   margin: 0;
   font-size: 1.1rem;
+  font-weight: 600;
 }
 
 .flashcard-counter {
@@ -1844,9 +1863,10 @@ input[type="text"]:focus, input[type="number"]:focus {
   align-items: center;
   width: 100%;
   gap: var(--spacing-lg);
-  padding: var(--spacing-md);
+  padding: var(--spacing-lg) var(--spacing-xl);
   flex-shrink: 0;
   border-top: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .flip-hint {
@@ -2112,21 +2132,22 @@ input[type="text"]:focus, input[type="number"]:focus {
 }
 
 /* ============================================
-   ADVANCED 3D FLASHCARD TEMPLATE STYLES
+   3D FLASHCARD TEMPLATE - FULL SCREEN
    ============================================ */
 
 .card-scene {
   width: 100%;
   height: 100%;
+  flex: 1;
   perspective: 1500px;
   animation: cardAppear 1.4s forwards;
-  margin: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
-  flex: 1;
+  padding: var(--spacing-xl);
   min-height: 0;
+  overflow: hidden;
+  background: var(--background);
 }
 
 @keyframes cardAppear {
@@ -2150,8 +2171,10 @@ input[type="text"]:focus, input[type="number"]:focus {
 }
 
 .card {
-  height: 100%;
   width: 100%;
+  height: 100%;
+  max-width: 700px;
+  max-height: 600px;
   position: relative;
   transform-style: preserve-3d;
   transform: rotateY(180deg);
