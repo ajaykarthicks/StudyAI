@@ -970,7 +970,7 @@ input:checked + .toggle-slider:before {
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
-  padding: var(--spacing-md) var(--spacing-lg);
+  padding: var(--spacing-sm);
   border-radius: var(--radius-lg);
   background: var(--background);
   cursor: pointer;
@@ -2365,6 +2365,25 @@ input[type="text"]:focus, input[type="number"]:focus {
   width: 50px;
   height: 50px;
   min-width: 50px;
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 1.5rem;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flashcard-nav-side-btn:hover:not(:disabled) {
+  transform: scale(1.2);
+  color: var(--secondary);
+}
+
+.flashcard-nav-side-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
 /* Main Card Display Area */
@@ -2375,7 +2394,7 @@ input[type="text"]:focus, input[type="number"]:focus {
   justify-content: center;
   overflow: hidden;
   min-height: 0;
-  padding: 0;
+  padding: var(--spacing-lg);
   width: 100%;
 }
 
@@ -2393,8 +2412,20 @@ input[type="text"]:focus, input[type="number"]:focus {
   height: 100%;
   position: relative;
   transform-style: preserve-3d;
-  transition: transform 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  transition: transform 1s cubic-bezier(0.68, -0.55, 0.265, 1.55);
   cursor: pointer;
+  animation: slideIn 0.5s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: rotateY(90deg) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: rotateY(0deg) scale(1);
+  }
 }
 
 .flashcard.flipped {
@@ -2412,9 +2443,9 @@ input[type="text"]:focus, input[type="number"]:focus {
   backface-visibility: hidden;
   display: flex;
   flex-direction: column;
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   padding: var(--spacing-xl);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
   cursor: pointer;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -2425,7 +2456,7 @@ input[type="text"]:focus, input[type="number"]:focus {
 .flashcard-front {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.3);
   justify-content: center;
   align-items: center;
   text-align: center;
@@ -2436,7 +2467,7 @@ input[type="text"]:focus, input[type="number"]:focus {
 .flashcard-back {
   background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
   color: white;
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.3);
   transform: rotateY(180deg);
   justify-content: center;
   align-items: center;

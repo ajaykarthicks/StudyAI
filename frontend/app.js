@@ -1173,23 +1173,3 @@ function escapeHtml(text) {
   div.textContent = text;
   return div.innerHTML;
 }
-
-function previousFlashcard() {
-  if (flashcardState.currentCardIndex > 0) {
-    const wrapper = document.querySelector('.flip-card-wrapper-3d');
-    if (wrapper) wrapper.classList.add('slide-exit-right');
-    
-    setTimeout(() => {
-      flashcardState.currentCardIndex--;
-      flashcardState.flipped[flashcardState.currentCardIndex] = false;
-      const resultBox = document.getElementById('flashcards-result');
-      renderFlashcards(resultBox);
-      
-      const newWrapper = document.querySelector('.flip-card-wrapper-3d');
-      if (newWrapper) {
-        newWrapper.classList.add('slide-enter-left');
-        setTimeout(() => newWrapper.classList.remove('slide-enter-left'), 500);
-      }
-    }, 300);
-  }
-}
