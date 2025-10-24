@@ -773,6 +773,18 @@ function addChatMessage(role, content) {
 async function handleSummarize() {
   const resultBox = document.getElementById('summarizer-result');
   const toolControls = resultBox.previousElementSibling;
+  const button = toolControls.querySelector('.button-generate');
+  
+  // Hide description and change button text
+  const description = toolControls.querySelector('.feature-description');
+  if (description) {
+    description.style.display = 'none';
+  }
+  
+  // Change button text to Regenerate
+  if (button) {
+    button.innerHTML = '<i class="fas fa-redo"></i><span>Regenerate</span>';
+  }
   
   // Remove centered class once generation starts
   if (toolControls && toolControls.classList) {
@@ -830,6 +842,18 @@ async function handleQuiz() {
   const num_questions = parseInt(document.getElementById('quiz-count').value);
   const resultBox = document.getElementById('quiz-result');
   const toolControls = resultBox.previousElementSibling;
+  const button = toolControls.querySelector('.button-generate');
+  
+  // Hide description and change button text
+  const description = toolControls.querySelector('.feature-description');
+  if (description) {
+    description.style.display = 'none';
+  }
+  
+  // Change button text to Regenerate
+  if (button) {
+    button.innerHTML = '<i class="fas fa-redo"></i><span>Regenerate</span>';
+  }
   
   // Remove centered class once generation starts
   if (toolControls && toolControls.classList) {
@@ -970,6 +994,18 @@ async function handleFlashcards() {
   const num_cards = parseInt(document.getElementById('flashcards-count').value);
   const resultBox = document.getElementById('flashcards-result');
   const toolControls = resultBox.previousElementSibling;
+  const button = toolControls.querySelector('.button-generate');
+  
+  // Hide description and change button text
+  const description = toolControls.querySelector('.feature-description');
+  if (description) {
+    description.style.display = 'none';
+  }
+  
+  // Change button text to Regenerate
+  if (button) {
+    button.innerHTML = '<i class="fas fa-redo"></i><span>Regenerate</span>';
+  }
   
   // Remove centered class once generation starts
   if (toolControls && toolControls.classList) {
@@ -1145,13 +1181,31 @@ function renderFlashcards(container) {
   
   html += '</div>'; // end flashcards-main-layout
   
-  // Progress section below card (mobile only shows progress bar)
+  // Progress section below card with navigation arrows in bottom bar
   html += '<div class="flashcards-progress-bottom">';
   
-  // Progress info and bar
+  // Left arrow (mobile - shown in progress bar)
+  html += '<div class="nav-arrow-mobile">';
+  if (flashcardState.currentCardIndex > 0) {
+    html += '<button class="flashcard-nav-btn flashcard-nav-mobile-btn" onclick="previousFlashcard()" title="Previous"><i class="fas fa-chevron-left"></i></button>';
+  } else {
+    html += '<button class="flashcard-nav-btn flashcard-nav-mobile-btn" disabled><i class="fas fa-chevron-left"></i></button>';
+  }
+  html += '</div>';
+  
+  // Progress info and bar (center)
   html += '<div class="progress-section">';
   html += `<div class="progress-info">Card <strong>${cardNumber}</strong> of <strong>${totalCards}</strong></div>`;
   html += `<div class="progress-bar"><div class="progress-fill" style="width: ${progress}%"></div></div>`;
+  html += '</div>';
+  
+  // Right arrow (mobile - shown in progress bar)
+  html += '<div class="nav-arrow-mobile">';
+  if (flashcardState.currentCardIndex < totalCards - 1) {
+    html += '<button class="flashcard-nav-btn flashcard-nav-mobile-btn" onclick="nextFlashcard()" title="Next"><i class="fas fa-chevron-right"></i></button>';
+  } else {
+    html += '<button class="flashcard-nav-btn flashcard-nav-mobile-btn" disabled><i class="fas fa-chevron-right"></i></button>';
+  }
   html += '</div>';
   
   html += '</div>'; // end flashcards-progress-bottom

@@ -1318,6 +1318,14 @@ input:checked + .toggle-slider:before {
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.control-group label i {
+  font-size: 0.875rem;
+  color: var(--primary);
 }
 
 .control-group input {
@@ -1655,13 +1663,16 @@ input:checked + .toggle-slider:before {
     justify-content: center;
     flex-shrink: 0;
     color: currentColor;
+    overflow: visible;
   }
 
   .tool-icon i {
-    font-size: 1rem;
-    width: 1rem;
-    height: 1rem;
-    line-height: 1rem;
+    font-size: 1rem !important;
+    width: 1rem !important;
+    height: 1rem !important;
+    line-height: 1rem !important;
+    display: inline-block !important;
+    text-align: center !important;
   }
 
   /* Mobile tool icon colors */
@@ -1955,7 +1966,7 @@ input:checked + .toggle-slider:before {
 
   .nav-arrow-mobile {
     flex-shrink: 0;
-    display: none;
+    display: flex;
     align-items: center;
     justify-content: center;
   }
