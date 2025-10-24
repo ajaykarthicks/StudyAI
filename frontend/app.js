@@ -244,9 +244,9 @@ function showPage(pageId) {
   if (pageId === 'dashboard') {
     appState.chatHistory = [];
     document.getElementById('chat-history').innerHTML = '';
-    // Restore PDFs from localStorage when showing dashboard
+    // Update PDF count display when showing dashboard
     setTimeout(() => {
-      updatePdfList();
+      updatePdfCountDisplay();
     }, 100);
   }
 }
@@ -341,7 +341,7 @@ async function handleMainUpload() {
   localStorage.setItem('selectedPdfIndex_backup', appState.selectedPdfIndex);
   
   // Update UI
-  updatePdfList();
+  updatePdfCountDisplay();
   
   if (errorCount > 0) {
     alert(`Uploaded ${successCount} file(s) successfully. ${errorCount} file(s) failed.`);
@@ -369,7 +369,7 @@ function restorePdfsFromStorage() {
         appState.selectedPdfIndex = parseInt(selectedIndex);
       }
       console.log('✅ Restored PDFs from localStorage:', appState.pdfsList.length, 'PDFs');
-      updatePdfList();
+      updatePdfCountDisplay();
       return true;
     }
   } catch (e) {
@@ -378,43 +378,78 @@ function restorePdfsFromStorage() {
   return false;
 }
 
-function updatePdfList() {
-  const pdfListContainer = document.getElementById('pdf-list');
-  if (!pdfListContainer) return; // Element not present in current view
-  
-  pdfListContainer.innerHTML = '';
+function updatePdfCountDisplay() {
+  const countDisplay = document.getElementById('pdf-count-display');
+  if (!countDisplay) return;
   
   if (appState.pdfsList.length === 0) {
-    pdfListContainer.innerHTML = '<p style="color: #888; padding: 10px;">No PDFs uploaded yet</p>';
+    countDisplay.textContent = 'Upload PDF to get started';
+  } else if (appState.pdfsList.length === 1) {
+    countDisplay.textContent = '1 PDF uploaded';
+  } else {
+    countDisplay.textContent = `${appState.pdfsList.length} PDFs uploaded`;
+  }
+  
+  // Update dropdown menu
+  updatePdfDropdown();
+}
+
+function updatePdfDropdown() {
+  const dropdownList = document.getElementById('pdf-list-dropdown');
+  if (!dropdownList) return;
+  
+  dropdownList.innerHTML = '';
+  
+  if (appState.pdfsList.length === 0) {
     return;
   }
   
   appState.pdfsList.forEach((pdf, index) => {
     const pdfItem = document.createElement('div');
-    pdfItem.className = 'pdf-item';
+    pdfItem.className = 'dropdown-pdf-item';
     if (index === appState.selectedPdfIndex) {
       pdfItem.classList.add('selected');
     }
     
     pdfItem.innerHTML = `
-      <div class="pdf-item-content" onclick="selectPdf(${index})">
+      <div class="dropdown-pdf-content" onclick="selectPdf(${index}); closePdfDropdown();">
         <i class="fas fa-file-pdf"></i>
-        <span class="pdf-item-name">${pdf.name}</span>
-        <span class="pdf-item-size">(${(pdf.text.length / 1024).toFixed(1)} KB)</span>
+        <div class="dropdown-pdf-info">
+          <div class="dropdown-pdf-name">${pdf.name}</div>
+          <div class="dropdown-pdf-size">${(pdf.text.length / 1024).toFixed(1)} KB</div>
+        </div>
+        ${index === appState.selectedPdfIndex ? '<i class="fas fa-check" style="color: var(--success);"></i>' : ''}
       </div>
-      <button class="pdf-item-delete" onclick="deletePdf(${index}, event)" title="Delete">
-        <i class="fas fa-times"></i>
+      <button class="dropdown-pdf-delete" onclick="deletePdf(${index}, event); updatePdfDropdown();">
+        <i class="fas fa-trash-alt"></i>
       </button>
     `;
     
-    pdfListContainer.appendChild(pdfItem);
+    dropdownList.appendChild(pdfItem);
   });
-  
-  // Update current file name display
-  const currentFileNameEl = document.getElementById('current-file-name');
-  if (currentFileNameEl) {
-    currentFileNameEl.textContent = appState.currentFileName;
+}
+
+function togglePdfDropdown() {
+  const menu = document.getElementById('pdf-dropdown-menu');
+  menu.classList.toggle('active');
+}
+
+function closePdfDropdown() {
+  const menu = document.getElementById('pdf-dropdown-menu');
+  menu.classList.remove('active');
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  const dropdown = document.querySelector('.dropdown');
+  if (dropdown && !dropdown.contains(e.target)) {
+    closePdfDropdown();
   }
+});
+
+function updatePdfList() {
+  // Updated to use new dropdown system
+  updatePdfCountDisplay();
 }
 
 function selectPdf(index) {
@@ -426,21 +461,14 @@ function selectPdf(index) {
     localStorage.setItem('selectedPdfIndex_backup', appState.selectedPdfIndex);
     
     // Update UI
-    updatePdfList();
-    
-    // Show confirmation
-    const currentFileNameEl = document.getElementById('current-file-name');
-    if (currentFileNameEl) {
-      currentFileNameEl.textContent = `✓ ${appState.currentFileName}`;
-      setTimeout(() => {
-        currentFileNameEl.textContent = appState.currentFileName;
-      }, 1500);
-    }
+    updatePdfCountDisplay();
   }
 }
 
 function deletePdf(index, event) {
-  event.stopPropagation(); // Prevent triggering selectPdf
+  if (event) {
+    event.stopPropagation();
+  }
   
   if (appState.pdfsList.length === 1) {
     alert('You must keep at least one PDF. Upload more before deleting.');
@@ -461,7 +489,7 @@ function deletePdf(index, event) {
     localStorage.setItem('selectedPdfIndex_backup', appState.selectedPdfIndex);
     
     console.log('🗑️ Deleted PDF:', pdfName);
-    updatePdfList();
+    updatePdfCountDisplay();
   }
 }
 
@@ -470,6 +498,7 @@ function addMorePdfs() {
   const fileInput = document.getElementById('main-pdf-file');
   fileInput.value = ''; // Reset
   fileInput.click();
+  closePdfDropdown();
 }
 
 // ============================================
@@ -599,20 +628,23 @@ async function handleSummarize() {
 // QUIZ GENERATOR
 // ============================================
 
+let quizState = {
+  questions: [],
+  userAnswers: {},
+  showAnswers: {}
+};
+
 async function handleQuiz() {
   const num_questions = parseInt(document.getElementById('quiz-count').value);
   const resultBox = document.getElementById('quiz-result');
-  resultBox.textContent = `Generating ${num_questions} quiz questions...`;
+  resultBox.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--text-secondary);">
+    <i class="fas fa-spinner fa-spin"></i> Generating ${num_questions} quiz questions...
+  </div>`;
 
   // Check if PDF is loaded
   if (!appState.pdfText && !appState.pdfBase64) {
-    const backup = localStorage.getItem('pdf_text_backup');
-    if (backup) {
-      appState.pdfText = backup;
-    } else {
-      resultBox.textContent = 'Error: No PDF uploaded';
-      return;
-    }
+    resultBox.textContent = 'Error: No PDF uploaded';
+    return;
   }
 
   try {
@@ -626,42 +658,134 @@ async function handleQuiz() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to generate quiz');
     
-    let quizContent = '';
     if (data.quiz && Array.isArray(data.quiz)) {
-      data.quiz.forEach((q, i) => {
-        quizContent += `Q${i + 1}. ${q.question}\n\n`;
-        q.options.forEach((opt, j) => {
-          quizContent += `  ${String.fromCharCode(97 + j)}) ${opt}\n`;
-        });
-        quizContent += `\n✓ Answer: ${q.options[q.correct_answer_index]}\n\n`;
-      });
+      quizState.questions = data.quiz;
+      quizState.userAnswers = {};
+      quizState.showAnswers = {};
+      renderInteractiveQuiz(resultBox);
     } else {
-      quizContent = data.quiz_text || 'No quiz generated';
+      resultBox.textContent = data.quiz_text || 'No quiz generated';
     }
-    resultBox.textContent = quizContent;
   } catch (error) {
-    resultBox.textContent = `Error: ${error.message}`;
+    resultBox.innerHTML = `<div style="color: var(--error); padding: 20px;">Error: ${error.message}</div>`;
   }
+}
+
+function renderInteractiveQuiz(container) {
+  let html = '<div class="quiz-container">';
+  
+  html += '<div class="quiz-header">';
+  html += `<h3>Quiz: ${quizState.questions.length} Questions</h3>`;
+  html += '<div class="quiz-actions">';
+  html += '<button class="button-secondary" onclick="showAllAnswers()"><i class="fas fa-eye"></i> Show All Answers</button>';
+  html += '</div>';
+  html += '</div>';
+  
+  quizState.questions.forEach((q, i) => {
+    const isAnswered = quizState.userAnswers[i] !== undefined;
+    const selectedAnswer = quizState.userAnswers[i];
+    const isCorrect = selectedAnswer === q.correct_answer_index;
+    const showAnswer = quizState.showAnswers[i];
+    
+    html += `<div class="quiz-question">`;
+    html += `<div class="quiz-question-header">`;
+    html += `<span class="quiz-q-number">Question ${i + 1}</span>`;
+    if (isAnswered) {
+      html += `<span class="quiz-status ${isCorrect ? 'correct' : 'incorrect'}">`;
+      html += isCorrect ? '<i class="fas fa-check"></i> Correct' : '<i class="fas fa-times"></i> Incorrect';
+      html += '</span>';
+    }
+    html += `</div>`;
+    html += `<p class="quiz-question-text">${q.question}</p>`;
+    
+    html += `<div class="quiz-options">`;
+    q.options.forEach((opt, j) => {
+      const isSelected = selectedAnswer === j;
+      const isCorrectOption = j === q.correct_answer_index;
+      
+      let optionClass = 'quiz-option';
+      if (isAnswered) {
+        if (isCorrectOption) optionClass += ' correct';
+        if (isSelected && !isCorrect) optionClass += ' incorrect';
+      }
+      if (isSelected && !isAnswered) optionClass += ' selected';
+      
+      html += `<button class="${optionClass}" onclick="selectQuizAnswer(${i}, ${j})">`;
+      html += `<span class="option-letter">${String.fromCharCode(65 + j)}</span>`;
+      html += `<span class="option-text">${opt}</span>`;
+      html += `</button>`;
+    });
+    html += `</div>`;
+    
+    if (isAnswered) {
+      html += `<div class="quiz-answer-section">`;
+      if (!showAnswer) {
+        html += `<button class="button-tertiary" onclick="toggleAnswerDisplay(${i})">`;
+        html += `<i class="fas fa-lightbulb"></i> Show Answer`;
+        html += `</button>`;
+      } else {
+        html += `<div class="correct-answer">`;
+        html += `<strong>✓ Correct Answer: ${q.options[q.correct_answer_index]}</strong>`;
+        if (q.explanation) {
+          html += `<p>${q.explanation}</p>`;
+        }
+        html += `</div>`;
+        html += `<button class="button-tertiary" onclick="toggleAnswerDisplay(${i})">`;
+        html += `<i class="fas fa-times"></i> Hide Answer`;
+        html += `</button>`;
+      }
+      html += `</div>`;
+    }
+    
+    html += `</div>`;
+  });
+  
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function selectQuizAnswer(questionIndex, answerIndex) {
+  quizState.userAnswers[questionIndex] = answerIndex;
+  quizState.showAnswers[questionIndex] = false;
+  const resultBox = document.getElementById('quiz-result');
+  renderInteractiveQuiz(resultBox);
+}
+
+function toggleAnswerDisplay(questionIndex) {
+  quizState.showAnswers[questionIndex] = !quizState.showAnswers[questionIndex];
+  const resultBox = document.getElementById('quiz-result');
+  renderInteractiveQuiz(resultBox);
+}
+
+function showAllAnswers() {
+  quizState.questions.forEach((q, i) => {
+    quizState.showAnswers[i] = true;
+  });
+  const resultBox = document.getElementById('quiz-result');
+  renderInteractiveQuiz(resultBox);
 }
 
 // ============================================
 // FLASHCARDS
 // ============================================
 
+let flashcardState = {
+  cards: [],
+  currentCardIndex: 0,
+  flipped: {}
+};
+
 async function handleFlashcards() {
   const num_cards = parseInt(document.getElementById('flashcards-count').value);
   const resultBox = document.getElementById('flashcards-result');
-  resultBox.textContent = `Generating ${num_cards} flashcards...`;
+  resultBox.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--text-secondary);">
+    <i class="fas fa-spinner fa-spin"></i> Generating ${num_cards} flashcards...
+  </div>`;
 
   // Check if PDF is loaded
   if (!appState.pdfText && !appState.pdfBase64) {
-    const backup = localStorage.getItem('pdf_text_backup');
-    if (backup) {
-      appState.pdfText = backup;
-    } else {
-      resultBox.textContent = 'Error: No PDF uploaded';
-      return;
-    }
+    resultBox.textContent = 'Error: No PDF uploaded';
+    return;
   }
 
   try {
@@ -675,18 +799,101 @@ async function handleFlashcards() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to generate flashcards');
 
-    let flashcardContent = '';
     if (data.flashcards && Array.isArray(data.flashcards)) {
-      data.flashcards.forEach((card, i) => {
-        flashcardContent += `📇 Card ${i + 1}:\n`;
-        flashcardContent += `   Front: ${card.front}\n`;
-        flashcardContent += `   Back: ${card.back}\n\n`;
-      });
+      flashcardState.cards = data.flashcards;
+      flashcardState.currentCardIndex = 0;
+      flashcardState.flipped = {};
+      renderFlashcards(resultBox);
     } else {
-      flashcardContent = data.flashcards_text || 'No flashcards generated';
+      resultBox.textContent = data.flashcards_text || 'No flashcards generated';
     }
-    resultBox.textContent = flashcardContent;
   } catch (error) {
-    resultBox.textContent = `Error: ${error.message}`;
+    resultBox.innerHTML = `<div style="color: var(--error); padding: 20px;">Error: ${error.message}</div>`;
+  }
+}
+
+function renderFlashcards(container) {
+  const card = flashcardState.cards[flashcardState.currentCardIndex];
+  const isFlipped = flashcardState.flipped[flashcardState.currentCardIndex];
+  
+  let html = '<div class="flashcards-container">';
+  
+  html += '<div class="flashcards-header">';
+  html += `<h3>Flashcards: ${flashcardState.cards.length}</h3>`;
+  html += `<span class="flashcard-counter">Card ${flashcardState.currentCardIndex + 1} of ${flashcardState.cards.length}</span>`;
+  html += '</div>';
+  
+  // 3D Flip Card
+  html += `<div class="flip-card-wrapper">`;
+  html += `<div class="flip-card ${isFlipped ? 'flipped' : ''}" onclick="flipCard()">`;
+  html += `<div class="flip-card-inner">`;
+  
+  // Front
+  html += `<div class="flip-card-front">`;
+  html += `<div class="flip-card-label">Question</div>`;
+  html += `<div class="flip-card-content">${card.front}</div>`;
+  html += `</div>`;
+  
+  // Back
+  html += `<div class="flip-card-back">`;
+  html += `<div class="flip-card-label">Answer</div>`;
+  html += `<div class="flip-card-content">${card.back}</div>`;
+  html += `</div>`;
+  
+  html += `</div>`;
+  html += `</div>`;
+  
+  // Navigation Controls
+  html += '<div class="flashcards-controls">';
+  
+  if (flashcardState.currentCardIndex > 0) {
+    html += '<button class="button-secondary" onclick="previousFlashcard()"><i class="fas fa-chevron-left"></i> Previous</button>';
+  } else {
+    html += '<button class="button-secondary" disabled style="opacity: 0.5;"><i class="fas fa-chevron-left"></i> Previous</button>';
+  }
+  
+  html += '<button class="button-tertiary" onclick="toggleFlipCard()"><i class="fas fa-redo"></i> Flip Card</button>';
+  
+  if (flashcardState.currentCardIndex < flashcardState.cards.length - 1) {
+    html += '<button class="button-secondary" onclick="nextFlashcard()">Next <i class="fas fa-chevron-right"></i></button>';
+  } else {
+    html += '<button class="button-secondary" disabled style="opacity: 0.5;">Next <i class="fas fa-chevron-right"></i></button>';
+  }
+  
+  html += '</div>';
+  
+  // Progress Bar
+  const progress = ((flashcardState.currentCardIndex + 1) / flashcardState.cards.length) * 100;
+  html += `<div class="progress-bar"><div class="progress-fill" style="width: ${progress}%"></div></div>`;
+  
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function flipCard() {
+  flashcardState.flipped[flashcardState.currentCardIndex] = !flashcardState.flipped[flashcardState.currentCardIndex];
+  const resultBox = document.getElementById('flashcards-result');
+  renderFlashcards(resultBox);
+}
+
+function toggleFlipCard() {
+  flipCard();
+}
+
+function nextFlashcard() {
+  if (flashcardState.currentCardIndex < flashcardState.cards.length - 1) {
+    flashcardState.currentCardIndex++;
+    flashcardState.flipped[flashcardState.currentCardIndex] = false;
+    const resultBox = document.getElementById('flashcards-result');
+    renderFlashcards(resultBox);
+  }
+}
+
+function previousFlashcard() {
+  if (flashcardState.currentCardIndex > 0) {
+    flashcardState.currentCardIndex--;
+    flashcardState.flipped[flashcardState.currentCardIndex] = false;
+    const resultBox = document.getElementById('flashcards-result');
+    renderFlashcards(resultBox);
   }
 }

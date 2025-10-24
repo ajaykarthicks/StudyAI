@@ -87,12 +87,26 @@
           <span>StudyAI</span>
         </div>
         <div class="file-info">
-          <span id="current-file-name">PDF Loaded</span>
-          <i class="fas fa-check-circle"></i>
+          <span id="pdf-count-display">Upload PDF to get started</span>
         </div>
       </div>
       <div class="navbar-right">
         <div id="user-info-header" class="user-info-header"></div>
+        <!-- PDF Upload Dropdown Button -->
+        <div class="dropdown">
+          <button class="button-dropdown" onclick="togglePdfDropdown()">
+            <i class="fas fa-plus"></i>
+            <span>Upload PDF</span>
+          </button>
+          <div id="pdf-dropdown-menu" class="dropdown-menu">
+            <div class="dropdown-item" onclick="addMorePdfs()">
+              <i class="fas fa-cloud-upload-alt"></i>
+              <span>Upload PDF</span>
+            </div>
+            <div class="dropdown-divider"></div>
+            <div id="pdf-list-dropdown" style="max-height: 300px; overflow-y: auto;"></div>
+          </div>
+        </div>
         <button class="button-logout" onclick="signOut()">
           <i class="fas fa-sign-out-alt"></i>
         </button>
@@ -103,21 +117,7 @@
       <!-- Left Sidebar - 1 part -->
       <aside class="sidebar">
         <div class="sidebar-header">
-          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-            <h3>AI Tools</h3>
-            <button class="icon-button" onclick="addMorePdfs()" title="Add more PDFs">
-              <i class="fas fa-plus"></i>
-            </button>
-          </div>
-        </div>
-        
-        <!-- PDF List -->
-        <div class="sidebar-section">
-          <div class="sidebar-section-title">
-            <i class="fas fa-book"></i>
-            <span>Documents</span>
-          </div>
-          <div id="pdf-list" class="pdf-list"></div>
+          <h3>AI Tools</h3>
         </div>
         
         <nav class="tools-menu">
