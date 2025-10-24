@@ -1277,6 +1277,37 @@ input:checked + .toggle-slider:before {
   top: 0;
 }
 
+.tool-controls.centered {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xl);
+  padding: var(--spacing-3xl) var(--spacing-lg);
+  background: var(--background);
+  border-bottom: none;
+}
+
+.tool-controls.centered .button-generate {
+  padding: var(--spacing-md) var(--spacing-3xl);
+  font-size: 1.1rem;
+  border: none;
+  outline: none;
+  box-shadow: 0 4px 15px rgba(0, 212, 255, 0.2);
+}
+
+.tool-controls.centered .button-generate:focus {
+  outline: none;
+  box-shadow: 0 4px 15px rgba(0, 212, 255, 0.2);
+}
+
+.feature-description {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  text-align: center;
+  max-width: 400px;
+  line-height: 1.6;
+}
+
 .control-group {
   display: flex;
   flex-direction: column;
@@ -1322,11 +1353,16 @@ input:checked + .toggle-slider:before {
   transition: var(--transition);
   white-space: nowrap;
   font-size: 0.95rem;
+  outline: none;
 }
 
 .button-generate:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(0, 212, 255, 0.3);
+}
+
+.button-generate:focus {
+  outline: none;
 }
 
 /* ============================================
@@ -1433,12 +1469,14 @@ input:checked + .toggle-slider:before {
   .navbar {
     padding: max(0.5rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) 0.5rem max(1rem, env(safe-area-inset-left));
     display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
+    flex-direction: row;
+    gap: 0.5rem;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
     position: relative;
     z-index: 100;
+    align-items: center;
+    justify-content: space-between;
   }
   
   .navbar-left {
@@ -1447,12 +1485,15 @@ input:checked + .toggle-slider:before {
     justify-content: flex-start;
     gap: 0.5rem;
     min-width: 0;
-    flex: 1;
+    flex: 0 1 auto;
   }
   
   .logo-small {
     font-size: 1.1rem;
     gap: 0.5rem;
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
   }
   
   .logo-small i {
@@ -1474,7 +1515,7 @@ input:checked + .toggle-slider:before {
   }
 
   .navbar-tool-heading {
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
     width: 100%;
@@ -1618,11 +1659,9 @@ input:checked + .toggle-slider:before {
 
   .tool-icon i {
     font-size: 1rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
+    width: 1rem;
+    height: 1rem;
+    line-height: 1rem;
   }
 
   /* Mobile tool icon colors */
@@ -1911,11 +1950,12 @@ input:checked + .toggle-slider:before {
     flex-direction: column;
     gap: var(--spacing-sm);
     flex: 1;
+    width: 100%;
   }
 
   .nav-arrow-mobile {
     flex-shrink: 0;
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
   }

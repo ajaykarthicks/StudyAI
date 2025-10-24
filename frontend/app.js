@@ -701,18 +701,6 @@ function updateNavbarHeader(toolName) {
         <p>${tool.description}</p>
       </div>
     `;
-
-    // Mobile view - add just the heading in a separate row below
-    const navbar = document.querySelector('.navbar');
-    let mobileHeading = navbar.querySelector('.navbar-tool-heading');
-    
-    if (!mobileHeading) {
-      mobileHeading = document.createElement('div');
-      mobileHeading.className = 'navbar-tool-heading';
-      navbar.appendChild(mobileHeading);
-    }
-    
-    mobileHeading.innerHTML = `<h2><i class="${tool.icon}"></i> ${tool.title}</h2>`;
   }
 }
 
@@ -784,6 +772,13 @@ function addChatMessage(role, content) {
 
 async function handleSummarize() {
   const resultBox = document.getElementById('summarizer-result');
+  const toolControls = resultBox.previousElementSibling;
+  
+  // Remove centered class once generation starts
+  if (toolControls && toolControls.classList) {
+    toolControls.classList.remove('centered');
+  }
+  
   resultBox.textContent = 'Generating summary...';
 
   // Check if PDF is loaded
@@ -834,6 +829,13 @@ let quizState = {
 async function handleQuiz() {
   const num_questions = parseInt(document.getElementById('quiz-count').value);
   const resultBox = document.getElementById('quiz-result');
+  const toolControls = resultBox.previousElementSibling;
+  
+  // Remove centered class once generation starts
+  if (toolControls && toolControls.classList) {
+    toolControls.classList.remove('centered');
+  }
+  
   resultBox.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--text-secondary);">
     <i class="fas fa-spinner fa-spin"></i> Generating ${num_questions} quiz questions...
   </div>`;
@@ -967,6 +969,13 @@ let flashcardState = {
 async function handleFlashcards() {
   const num_cards = parseInt(document.getElementById('flashcards-count').value);
   const resultBox = document.getElementById('flashcards-result');
+  const toolControls = resultBox.previousElementSibling;
+  
+  // Remove centered class once generation starts
+  if (toolControls && toolControls.classList) {
+    toolControls.classList.remove('centered');
+  }
+  
   resultBox.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--text-secondary);">
     <i class="fas fa-spinner fa-spin"></i> Generating ${num_cards} flashcards...
   </div>`;
@@ -1093,7 +1102,7 @@ function renderFlashcards(container) {
   // Main card section with side navigation
   html += '<div class="flashcards-main-layout">';
   
-  // Previous button (left) - hidden on mobile
+  // Previous button (left) - desktop only
   html += '<div class="flashcards-nav-side flashcards-nav-desktop">';
   if (flashcardState.currentCardIndex > 0) {
     html += '<button class="flashcard-nav-btn flashcard-nav-side-btn" onclick="previousFlashcard()" title="Previous"><i class="fas fa-chevron-left"></i></button>';
@@ -1125,7 +1134,7 @@ function renderFlashcards(container) {
   html += '</div>'; // end card-wrapper
   html += '</div>'; // end flashcards-main
   
-  // Next button (right) - hidden on mobile
+  // Next button (right) - desktop only
   html += '<div class="flashcards-nav-side flashcards-nav-desktop">';
   if (flashcardState.currentCardIndex < totalCards - 1) {
     html += '<button class="flashcard-nav-btn flashcard-nav-side-btn" onclick="nextFlashcard()" title="Next"><i class="fas fa-chevron-right"></i></button>';
@@ -1136,31 +1145,13 @@ function renderFlashcards(container) {
   
   html += '</div>'; // end flashcards-main-layout
   
-  // Progress section below card with mobile navigation
+  // Progress section below card (mobile only shows progress bar)
   html += '<div class="flashcards-progress-bottom">';
   
-  // Left arrow (mobile)
-  html += '<div class="nav-arrow-mobile">';
-  if (flashcardState.currentCardIndex > 0) {
-    html += '<button class="flashcard-nav-btn flashcard-nav-mobile-btn" onclick="previousFlashcard()" title="Previous"><i class="fas fa-chevron-left"></i></button>';
-  } else {
-    html += '<button class="flashcard-nav-btn flashcard-nav-mobile-btn" disabled><i class="fas fa-chevron-left"></i></button>';
-  }
-  html += '</div>';
-  
-  // Progress info and bar (center)
+  // Progress info and bar
   html += '<div class="progress-section">';
   html += `<div class="progress-info">Card <strong>${cardNumber}</strong> of <strong>${totalCards}</strong></div>`;
   html += `<div class="progress-bar"><div class="progress-fill" style="width: ${progress}%"></div></div>`;
-  html += '</div>';
-  
-  // Right arrow (mobile)
-  html += '<div class="nav-arrow-mobile">';
-  if (flashcardState.currentCardIndex < totalCards - 1) {
-    html += '<button class="flashcard-nav-btn flashcard-nav-mobile-btn" onclick="nextFlashcard()" title="Next"><i class="fas fa-chevron-right"></i></button>';
-  } else {
-    html += '<button class="flashcard-nav-btn flashcard-nav-mobile-btn" disabled><i class="fas fa-chevron-right"></i></button>';
-  }
   html += '</div>';
   
   html += '</div>'; // end flashcards-progress-bottom
