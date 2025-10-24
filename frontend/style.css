@@ -470,10 +470,6 @@ body {
   font-size: 0.9rem;
 }
 
-.user-info-mobile {
-  display: none;
-}
-
 .button-logout {
   width: 40px;
   height: 40px;
@@ -1304,9 +1300,22 @@ input:checked + .toggle-slider:before {
   box-shadow: 0 4px 15px rgba(0, 212, 255, 0.2);
 }
 
-/* Summary tool - right align button */
-#summarizer-content .tool-controls .button-generate {
-  margin-left: auto;
+.tool-controls.right-aligned {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-lg);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.tool-controls.right-aligned .button-generate {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  font-size: 0.95rem;
+  border: none;
+  outline: none;
+  flex-shrink: 0;
 }
 
 .feature-description {
@@ -1319,10 +1328,8 @@ input:checked + .toggle-slider:before {
 
 .control-group {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   gap: var(--spacing-sm);
-  align-items: center;
-  flex-wrap: nowrap;
 }
 
 .control-group label {
@@ -1340,17 +1347,14 @@ input:checked + .toggle-slider:before {
 }
 
 .control-group input {
-  padding: 0;
+  padding: var(--spacing-sm) var(--spacing-md);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   font-size: 0.9rem;
   color: var(--text-primary);
   background: var(--background);
-  width: 50px;
-  height: 40px;
-  text-align: center;
+  width: 100px;
   transition: var(--transition);
-  flex-shrink: 0;
 }
 
 .control-group input:focus {
@@ -1521,13 +1525,6 @@ input:checked + .toggle-slider:before {
   .logo-small i {
     font-size: 1.25rem;
   }
-
-  .user-info-mobile {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex: 1;
-  }
   
   .file-info {
     display: none;
@@ -1585,7 +1582,21 @@ input:checked + .toggle-slider:before {
   }
   
   .user-info-header {
-    display: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    margin-right: auto;
+    flex: 1;
+    justify-content: flex-end;
+  }
+  
+  .user-info-header img {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
   }
   
   .button-dropdown {
@@ -1769,6 +1780,9 @@ input:checked + .toggle-slider:before {
     top: 0;
     z-index: 10;
     max-height: auto;
+    display: flex;
+    align-items: center;
+    flex-direction: row;
   }
   
   .control-group {
@@ -1776,28 +1790,57 @@ input:checked + .toggle-slider:before {
     align-items: center;
     gap: 0.5rem;
     flex-direction: row;
-    flex-wrap: nowrap;
   }
-
+  
   .control-group label {
     font-size: 0.8rem;
     font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
     white-space: nowrap;
-    flex-shrink: 0;
   }
-
+  
   .control-group input {
     width: 60px;
-    height: 40px;
+    height: 44px;
     padding: 0;
     font-size: 0.85rem;
     text-align: center;
-    flex-shrink: 0;
-  }  .button-generate {
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--background);
+    color: var(--text-primary);
+  }
+  
+  .control-group input:focus {
+    outline: none;
+    border-color: var(--primary);
+    background: var(--surface);
+  }
+  
+  .button-generate {
     padding: 0.6rem 1rem;
     font-size: 0.9rem;
     min-height: 44px;
     white-space: nowrap;
+    flex-shrink: 0;
+  }
+  
+  .tool-controls.right-aligned {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  
+  .tool-controls.right-aligned .button-generate {
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+    flex-shrink: 0;
   }
   
   /* ============================================

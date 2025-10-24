@@ -223,26 +223,13 @@ async function signOut() {
 
 function updateUserInfo() {
   const userInfoElements = document.querySelectorAll('#user-info-header');
-  const userInfoMobile = document.getElementById('user-info-mobile');
-  
   if (appState.user) {
-    // Desktop header
     userInfoElements.forEach(el => {
       el.innerHTML = `
         <img src="${appState.user.picture}" alt="${appState.user.name}" style="width: 32px; height: 32px; border-radius: 50%; margin-right: 8px;">
         <span>${appState.user.given_name}</span>
       `;
     });
-    
-    // Mobile navbar-left display
-    if (userInfoMobile) {
-      userInfoMobile.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <img src="${appState.user.picture}" alt="${appState.user.name}" style="width: 32px; height: 32px; border-radius: 50%;">
-          <span style="font-size: 0.85rem; font-weight: 500; color: var(--text-primary);">${appState.user.given_name}</span>
-        </div>
-      `;
-    }
   }
   
   // Update user dropdown with new design
@@ -799,9 +786,10 @@ async function handleSummarize() {
     button.innerHTML = '<i class="fas fa-redo"></i><span>Regenerate</span>';
   }
   
-  // Remove centered class once generation starts
+  // Remove centered class and add right-aligned class
   if (toolControls && toolControls.classList) {
     toolControls.classList.remove('centered');
+    toolControls.classList.add('right-aligned');
   }
   
   resultBox.textContent = 'Generating summary...';
@@ -1148,17 +1136,8 @@ function renderFlashcards(container) {
   
   html += '<div class="flashcards-container">';
   
-  // Main card section with side navigation
+  // Main card section - no side navigation
   html += '<div class="flashcards-main-layout">';
-  
-  // Previous button (left) - desktop only
-  html += '<div class="flashcards-nav-side flashcards-nav-desktop">';
-  if (flashcardState.currentCardIndex > 0) {
-    html += '<button class="flashcard-nav-btn flashcard-nav-side-btn" onclick="previousFlashcard()" title="Previous"><i class="fas fa-chevron-left"></i></button>';
-  } else {
-    html += '<button class="flashcard-nav-btn flashcard-nav-side-btn" disabled><i class="fas fa-chevron-left"></i></button>';
-  }
-  html += '</div>';
   
   // Card in center
   html += '<div class="flashcards-main">';
@@ -1182,15 +1161,6 @@ function renderFlashcards(container) {
   html += '</div>'; // end flashcard
   html += '</div>'; // end card-wrapper
   html += '</div>'; // end flashcards-main
-  
-  // Next button (right) - desktop only
-  html += '<div class="flashcards-nav-side flashcards-nav-desktop">';
-  if (flashcardState.currentCardIndex < totalCards - 1) {
-    html += '<button class="flashcard-nav-btn flashcard-nav-side-btn" onclick="nextFlashcard()" title="Next"><i class="fas fa-chevron-right"></i></button>';
-  } else {
-    html += '<button class="flashcard-nav-btn flashcard-nav-side-btn" disabled><i class="fas fa-chevron-right"></i></button>';
-  }
-  html += '</div>';
   
   html += '</div>'; // end flashcards-main-layout
   
