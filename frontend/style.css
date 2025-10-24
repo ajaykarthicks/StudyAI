@@ -1277,6 +1277,7 @@ input:checked + .toggle-slider:before {
   position: sticky;
   top: 0;
   flex-direction: row;
+  white-space: nowrap;
 }
 
 .tool-controls > .feature-description {
@@ -1285,6 +1286,7 @@ input:checked + .toggle-slider:before {
 
 .tool-controls .button-generate {
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 .tool-controls.centered {
@@ -1295,6 +1297,7 @@ input:checked + .toggle-slider:before {
   padding: var(--spacing-md) var(--spacing-lg);
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+  flex-wrap: nowrap;
 }
 
 .tool-controls.centered > .feature-description {
@@ -1306,6 +1309,7 @@ input:checked + .toggle-slider:before {
   padding: var(--spacing-md) var(--spacing-2xl);
   font-size: 1rem;
   box-shadow: none;
+  flex-shrink: 0;
 }
 
 .tool-controls.right-aligned {
@@ -1344,6 +1348,7 @@ input:checked + .toggle-slider:before {
   align-items: center;
   gap: var(--spacing-md);
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .control-group label {
@@ -1360,6 +1365,7 @@ input:checked + .toggle-slider:before {
 .control-group label i {
   font-size: 0.875rem;
   color: var(--primary);
+  flex-shrink: 0;
 }
 
 .control-group input {
@@ -1377,6 +1383,7 @@ input:checked + .toggle-slider:before {
 .tool-controls.centered .control-group {
   flex-direction: column;
   gap: var(--spacing-sm);
+  white-space: normal;
 }
 
 .control-group input:focus {
