@@ -1042,6 +1042,9 @@ async function handleFlashcards() {
 }
 
 function renderFlashcards(container) {
+  console.log('🎨 renderFlashcards called with container:', container);
+  console.log('flashcardState.cards:', flashcardState.cards);
+  
   // Check if cards exist
   if (!flashcardState.cards || flashcardState.cards.length === 0) {
     console.warn('No flashcards available');
@@ -1068,7 +1071,7 @@ function renderFlashcards(container) {
   const cardNumber = flashcardState.currentCardIndex + 1;
   const progress = (cardNumber / totalCards) * 100;
   
-  console.log(`Rendering card ${cardNumber}/${totalCards}`, card); // Debug log
+  console.log(`🎴 Rendering card ${cardNumber}/${totalCards}`, card);
   
   let html = '';
   
@@ -1128,7 +1131,13 @@ function renderFlashcards(container) {
   
   html += '</div>'; // end flashcards-container
   
+  console.log('📝 HTML to render (first 200 chars):', html.substring(0, 200));
+  console.log('🎯 Setting innerHTML on container, length:', html.length);
+  
   container.innerHTML = html;
+  
+  console.log('✅ innerHTML set, checking rendered content...');
+  console.log('Container now contains:', container.innerHTML.substring(0, 200));
 }
 
 function flipCard() {
