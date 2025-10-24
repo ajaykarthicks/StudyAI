@@ -124,9 +124,35 @@
           </div>
         </div>
         <!-- Three Dot Menu -->
-        <button class="button-icon-only" onclick="toggleThreeDotsMenu()">
-          <i class="fas fa-ellipsis-v"></i>
-        </button>
+        <div class="dropdown dropdown-three-dots">
+          <button class="button-icon-only" onclick="toggleThreeDotsMenu()">
+            <i class="fas fa-ellipsis-v"></i>
+          </button>
+          <div id="three-dots-menu" class="dropdown-menu dropdown-menu-right">
+            <!-- User Profile Section -->
+            <div class="three-dots-user-section">
+              <img id="three-dots-user-pic" src="" alt="User" class="three-dots-user-pic" style="display: none;">
+              <div class="three-dots-user-info">
+                <div id="three-dots-user-name" class="three-dots-user-name">User Name</div>
+              </div>
+            </div>
+            <div class="dropdown-divider"></div>
+            <!-- Dark Mode Toggle -->
+            <div class="dropdown-item-toggle">
+              <span>Dark Mode</span>
+              <label class="toggle-switch">
+                <input type="checkbox" id="dark-mode-toggle" onchange="toggleDarkMode()">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="dropdown-divider"></div>
+            <!-- Logout Button -->
+            <div class="dropdown-item" onclick="signOut()">
+              <i class="fas fa-sign-out-alt"></i>
+              <span>Logout</span>
+            </div>
+          </div>
+        </div>
       </div>
     </header>
 

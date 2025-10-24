@@ -136,6 +136,9 @@ async function checkAuth() {
 async function checkAuthAndShowDashboard() {
   try {
     console.log('OAuth callback - checking auth for upload page...');
+    // Initialize theme at the start
+    initializeTheme();
+    
     const response = await fetch(`${API_BASE_URL}/me`, { 
       credentials: 'include',
       method: 'GET'
@@ -471,8 +474,100 @@ function closeUserDropdown() {
 
 // Toggle Three-Dot Menu (placeholder for future functionality)
 function toggleThreeDotsMenu() {
-  // Placeholder - can be used for settings, help, or other options in the future
-  console.log('Three-dot menu clicked - awaiting definition');
+  const menu = document.getElementById('three-dots-menu');
+  if (menu) {
+    menu.classList.toggle('active');
+    if (menu.classList.contains('active')) {
+      updateThreeDotsMenu();
+    }
+  }
+}
+
+// Close Three-Dots Menu
+function closeThreeDotsMenu() {
+  const menu = document.getElementById('three-dots-menu');
+  if (menu) {
+    menu.classList.remove('active');
+  }
+}
+
+// Update Three-Dots Menu with User Information
+function updateThreeDotsMenu() {
+  const userNameEl = document.getElementById('three-dots-user-name');
+  const userPicEl = document.getElementById('three-dots-user-pic');
+  
+  if (userNameEl && appState.user) {
+    userNameEl.textContent = appState.user.name || 'User';
+  }
+  
+  if (userPicEl && appState.user) {
+    userPicEl.src = appState.user.picture || '';
+    userPicEl.style.display = 'block';
+  }
+  
+  // Set dark mode toggle state based on current theme
+  const darkModeToggle = document.getElementById('dark-mode-toggle');
+  if (darkModeToggle) {
+    darkModeToggle.checked = document.documentElement.getAttribute('data-theme') === 'dark';
+  }
+}
+
+// Toggle Dark Mode
+function toggleDarkMode() {
+  const isDarkMode = document.getElementById('dark-mode-toggle').checked;
+  if (isDarkMode) {
+    enableDarkMode();
+  } else {
+    disableDarkMode();
+  }
+}
+
+// Enable Dark Mode
+function enableDarkMode() {
+  document.documentElement.setAttribute('data-theme', 'dark');
+  localStorage.setItem('theme', 'dark');
+  applyDarkModeStyles();
+}
+
+// Disable Dark Mode
+function disableDarkMode() {
+  document.documentElement.setAttribute('data-theme', 'light');
+  localStorage.setItem('theme', 'light');
+  applyLightModeStyles();
+}
+
+// Apply Dark Mode Styles
+function applyDarkModeStyles() {
+  const root = document.documentElement;
+  root.style.setProperty('--background', '#0f172a');
+  root.style.setProperty('--surface', '#1e293b');
+  root.style.setProperty('--text-primary', '#f1f5f9');
+  root.style.setProperty('--text-secondary', '#cbd5e1');
+  root.style.setProperty('--text-light', '#94a3b8');
+  root.style.setProperty('--border', '#334155');
+}
+
+// Apply Light Mode Styles
+function applyLightModeStyles() {
+  const root = document.documentElement;
+  root.style.setProperty('--background', '#f8f9fa');
+  root.style.setProperty('--surface', '#ffffff');
+  root.style.setProperty('--text-primary', '#0f172a');
+  root.style.setProperty('--text-secondary', '#64748b');
+  root.style.setProperty('--text-light', '#94a3b8');
+  root.style.setProperty('--border', '#e2e8f0');
+}
+
+// Initialize theme on page load
+function initializeTheme() {
+  const savedTheme = localStorage.getItem('theme') || 'light';
+  if (savedTheme === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    applyDarkModeStyles();
+  } else {
+    document.documentElement.setAttribute('data-theme', 'light');
+    applyLightModeStyles();
+  }
 }
 
 // Close dropdown when clicking outside
@@ -487,6 +582,12 @@ document.addEventListener('click', (e) => {
   const userDropdown = document.querySelector('.dropdown-user');
   if (userDropdown && !userDropdown.contains(e.target)) {
     closeUserDropdown();
+  }
+  
+  // Close three-dots dropdown
+  const threeDotsDropdown = document.querySelector('.dropdown-three-dots');
+  if (threeDotsDropdown && !threeDotsDropdown.contains(e.target)) {
+    closeThreeDotsMenu();
   }
 });
 
@@ -859,9 +960,14 @@ async function handleFlashcards() {
 
   // Check if PDF is loaded
   if (!appState.pdfText && !appState.pdfBase64) {
-    resultBox.textContent = 'Error: No PDF uploaded';
+    console.error('❌ No PDF text available. appState.pdfText:', appState.pdfText);
+    console.error('appState.pdfBase64:', appState.pdfBase64);
+    console.log('appState object:', appState);
+    resultBox.textContent = 'Error: No PDF uploaded. Please upload a PDF first.';
     return;
   }
+
+  console.log(`📊 Generating ${num_cards} flashcards from PDF of size ${appState.pdfText?.length || 0} characters`);
 
   try {
     const response = await fetch(`${API_BASE_URL}/api/generate-flashcards`, {
@@ -871,41 +977,62 @@ async function handleFlashcards() {
       credentials: 'include',
     });
 
+    console.log('Flashcard API Response Status:', response.status);
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Failed to generate flashcards');
-
-    console.log('Flashcard API Response:', data); // Debug log
+    console.log('Flashcard API Response Data:', data);
     
+    if (!response.ok) {
+      console.error('❌ API Error:', data.error);
+      throw new Error(data.error || 'Failed to generate flashcards');
+    }
+
     let flashcards = [];
     
     // Handle different response formats
     if (data.flashcards) {
+      console.log('✅ Found flashcards in response');
       if (Array.isArray(data.flashcards)) {
+        console.log('✅ Flashcards are already an array, count:', data.flashcards.length);
         flashcards = data.flashcards;
       } else if (typeof data.flashcards === 'string') {
+        console.log('✅ Flashcards are a string, attempting to parse');
         try {
           flashcards = JSON.parse(data.flashcards);
+          console.log('✅ Successfully parsed string, count:', flashcards.length);
         } catch (e) {
-          console.error('Failed to parse flashcards string:', e);
-          resultBox.textContent = 'Error parsing flashcards';
+          console.error('❌ Failed to parse flashcards string:', e);
+          resultBox.textContent = 'Error parsing flashcards - invalid format';
           return;
         }
       }
+    } else if (data.flashcards_text) {
+      console.log('⚠️ API returned flashcards_text instead:', data.flashcards_text);
+      resultBox.textContent = 'API returned: ' + data.flashcards_text;
+      return;
     }
     
+    console.log('📋 Processed flashcards:', flashcards);
+    
     if (flashcards && flashcards.length > 0) {
+      console.log(`✅ Creating card objects from ${flashcards.length} flashcards`);
       // Ensure each card has front and back properties
-      flashcardState.cards = flashcards.map(card => ({
-        front: card.front || card.question || card.q || '',
-        back: card.back || card.answer || card.a || ''
-      }));
+      flashcardState.cards = flashcards.map((card, idx) => {
+        console.log(`Card ${idx}:`, card);
+        return {
+          front: card.front || card.question || card.q || '',
+          back: card.back || card.answer || card.a || ''
+        };
+      });
+      console.log('✅ Final card state:', flashcardState.cards);
       flashcardState.currentCardIndex = 0;
       flashcardState.flipped = {};
       renderFlashcards(resultBox);
     } else {
-      resultBox.textContent = data.flashcards_text || 'No flashcards generated - please try again';
+      console.error('❌ No valid flashcards generated');
+      resultBox.textContent = data.flashcards_text || 'No flashcards generated - please try again with a different PDF or settings.';
     }
   } catch (error) {
+    console.error('❌ Flashcard generation error:', error);
     resultBox.innerHTML = `<div style="color: var(--error); padding: 20px;">Error: ${error.message}</div>`;
   }
 }

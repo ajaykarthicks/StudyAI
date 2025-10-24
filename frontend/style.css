@@ -629,6 +629,99 @@ body {
   color: var(--text-secondary);
 }
 
+/* Three-Dot Menu Styling */
+.dropdown-three-dots {
+  position: relative;
+}
+
+.three-dots-user-section {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.three-dots-user-pic {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.three-dots-user-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.three-dots-user-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+/* Toggle Switch Styling */
+.dropdown-item-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md) var(--spacing-lg);
+  cursor: pointer;
+  transition: var(--transition);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.dropdown-item-toggle:hover {
+  background: var(--background);
+  color: var(--primary);
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 26px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: var(--transition);
+  border-radius: 34px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: var(--transition);
+  border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+  background-color: var(--primary);
+}
+
+input:checked + .toggle-slider:before {
+  transform: translateX(24px);
+}
+
 .dropdown-pdf-item {
   display: flex;
   align-items: center;
@@ -897,9 +990,9 @@ body {
 }
 
 .tool-icon {
-  font-size: 1.5rem;
-  width: 40px;
-  height: 40px;
+  font-size: 2rem;
+  width: 60px;
+  height: 60px;
   border-radius: var(--radius-lg);
   background: transparent;
   display: flex;
@@ -912,18 +1005,34 @@ body {
 }
 
 .tool-icon i {
-  font-size: 1.5rem;
-  color: var(--text-secondary);
+  font-size: 2rem;
   pointer-events: none;
   transition: var(--transition);
 }
 
+/* Color coding for different tools */
+.tool-menu-item:nth-child(1) .tool-icon i {
+  color: #00d4ff;
+}
+
+.tool-menu-item:nth-child(2) .tool-icon i {
+  color: #6366f1;
+}
+
+.tool-menu-item:nth-child(3) .tool-icon i {
+  color: #10b981;
+}
+
+.tool-menu-item:nth-child(4) .tool-icon i {
+  color: #f59e0b;
+}
+
 .tool-menu-item:hover .tool-icon i {
-  color: var(--primary);
+  transform: scale(1.15);
 }
 
 .tool-menu-item.active .tool-icon i {
-  color: var(--primary);
+  transform: scale(1.1);
 }
 
 .tool-label {
