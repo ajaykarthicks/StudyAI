@@ -1426,7 +1426,7 @@ input:checked + .toggle-slider:before {
   align-items: center;
   justify-content: flex-start;
   background: var(--surface);
-  padding: var(--spacing-md) var(--spacing-lg);
+  padding: var(--spacing-md) 0;
   border-bottom: 1px solid var(--border);
   flex-wrap: nowrap;
   flex-shrink: 0;
@@ -1451,7 +1451,7 @@ input:checked + .toggle-slider:before {
   align-items: center;
   justify-content: flex-start;
   gap: var(--spacing-lg);
-  padding: var(--spacing-md) var(--spacing-lg);
+  padding: var(--spacing-md) 0;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-wrap: nowrap;
@@ -1588,7 +1588,7 @@ input:checked + .toggle-slider:before {
   background: var(--background);
   border: none;
   border-radius: 0;
-  padding: 20px;
+  padding: 20px 0;
   height: 100%;
   flex: 1;
   overflow-y: auto;
