@@ -433,7 +433,7 @@ body {
   left: 50%;
   transform: translate(-50%, -50%) scale(0.8);
   background: var(--surface);
-  padding: clamp(var(--spacing-3xl), 8vw, 60px) clamp(var(--spacing-2xl), 6vw, 50px);
+  padding: clamp(3rem, 10vw, 80px) clamp(var(--spacing-2xl), 6vw, 50px);
   border-radius: var(--radius-xl);
   text-align: center;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
@@ -441,8 +441,14 @@ body {
   animation: popupShow 0.5s ease-out forwards;
   min-width: 420px;
   max-width: 600px;
+  min-height: clamp(200px, 45vh, 350px);
   word-wrap: break-word;
   display: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(1rem, 3vw, 2rem);
 }
 
 .success-popup.active {
@@ -480,7 +486,7 @@ body {
 }
 
 .success-popup-icon {
-  font-size: clamp(3rem, 10vw, 4.5rem);
+  font-size: clamp(3.5rem, 12vw, 5.5rem);
   color: var(--success);
   animation: successBounce 0.6s ease-out;
 }
@@ -952,9 +958,10 @@ input:checked + .toggle-slider:before {
 
 .dashboard-container {
   display: grid;
-  grid-template-columns: 1fr 4fr;
+  grid-template-columns: minmax(280px, 1fr) minmax(300px, 5fr);
   flex: 1;
   overflow: hidden;
+  gap: 0;
 }
 
 /* ============================================
@@ -967,8 +974,11 @@ input:checked + .toggle-slider:before {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: var(--spacing-lg);
   gap: var(--spacing-lg);
+  height: 100%;
+  width: 100%;
 }
 
 .sidebar-header {
