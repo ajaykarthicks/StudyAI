@@ -374,7 +374,27 @@ def upload_pdf():
         print(f"[ERROR] PDF upload failed: {e}")
         return jsonify({"error": f"Failed to read PDF: {str(e)}"}), 500
 
-@app.route('/api/chat', methods=['POST'])
+@app.route('/api/delete-pdf', methods=['POST'])
+def delete_pdf():
+    """Delete PDF data from server-side session"""
+    filename = request.form.get('filename', '').strip()
+    
+    if not filename:
+        return jsonify({"error": "Filename is required"}), 400
+    
+    try:
+        # Clear server-side PDF session data
+        if 'pdf_text' in session:
+            del session['pdf_text']
+        
+        print(f"[PDF] Deleted PDF from server: {filename}")
+        return jsonify({
+            "message": "PDF deleted successfully",
+            "filename": filename
+        })
+    except Exception as e:
+        print(f"[ERROR] PDF deletion failed: {e}")
+        return jsonify({"error": f"Failed to delete PDF: {str(e)}"}), 500
 def chat_with_pdf():
     data = request.get_json(silent=True) or {}
     question = data.get('question', '').strip()

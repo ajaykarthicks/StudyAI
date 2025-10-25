@@ -315,6 +315,10 @@ async function handleMainUpload() {
   const files = Array.from(fileInput.files);
   console.log('🔼 Starting upload of', files.length, 'PDF(s)');
   
+  // Show loading overlay
+  const loadingOverlay = document.getElementById('upload-loading');
+  loadingOverlay.classList.add('active');
+  
   let successCount = 0;
   let errorCount = 0;
 
@@ -365,18 +369,31 @@ async function handleMainUpload() {
   localStorage.setItem('pdfs_backup', JSON.stringify(appState.pdfsList));
   localStorage.setItem('selectedPdfIndex_backup', appState.selectedPdfIndex);
   
-  // Update UI
-  updatePdfCountDisplay();
+  // Hide loading overlay
+  loadingOverlay.classList.remove('active');
   
-  if (errorCount > 0) {
-    alert(`Uploaded ${successCount} file(s) successfully. ${errorCount} file(s) failed.`);
-  } else {
-    alert(`Uploaded ${successCount} PDF(s) successfully!`);
-  }
-  
+  // Show success popup
   if (successCount > 0) {
-    showPage('dashboard');
-    selectTool('chatbot', document.querySelector('.tool-menu-item'));
+    const successPopup = document.getElementById('success-popup');
+    successPopup.classList.add('active');
+    
+    // Hide popup after 1 second and redirect
+    setTimeout(() => {
+      successPopup.classList.remove('active');
+      successPopup.classList.add('hide');
+      
+      setTimeout(() => {
+        successPopup.classList.remove('hide');
+        // Update UI
+        updatePdfCountDisplay();
+        showPage('dashboard');
+        selectTool('chatbot', document.querySelector('.tool-menu-item'));
+      }, 500);
+    }, 1000);
+  } else {
+    // Update UI
+    updatePdfCountDisplay();
+    alert(`Error: All ${errorCount} file(s) failed to upload.`);
   }
 }
 
@@ -629,27 +646,70 @@ function deletePdf(index, event) {
   
   const pdfName = appState.pdfsList[index].name;
   if (confirm(`Delete "${pdfName}"?`)) {
-    appState.pdfsList.splice(index, 1);
+    // Send deletion request to backend
+    const formData = new FormData();
+    formData.append('filename', pdfName);
     
-    // Adjust selected index if needed
-    if (appState.selectedPdfIndex >= appState.pdfsList.length) {
-      appState.selectedPdfIndex = appState.pdfsList.length - 1;
-    }
-    
-    // Update localStorage backup
-    localStorage.setItem('pdfs_backup', JSON.stringify(appState.pdfsList));
-    localStorage.setItem('selectedPdfIndex_backup', appState.selectedPdfIndex);
-    
-    console.log('🗑️ Deleted PDF:', pdfName);
-    updatePdfCountDisplay();
+    fetch(`${API_BASE_URL}/api/delete-pdf`, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+    })
+    .then(response => {
+      if (!response.ok) {
+        console.warn('⚠️ Backend deletion may have failed, but proceeding with local deletion');
+      }
+      return response.json().catch(() => ({}));
+    })
+    .then(data => {
+      // Remove from appState
+      appState.pdfsList.splice(index, 1);
+      
+      // Adjust selected index if needed
+      if (appState.selectedPdfIndex >= appState.pdfsList.length) {
+        appState.selectedPdfIndex = appState.pdfsList.length - 1;
+      }
+      
+      // Update localStorage backup
+      localStorage.setItem('pdfs_backup', JSON.stringify(appState.pdfsList));
+      localStorage.setItem('selectedPdfIndex_backup', appState.selectedPdfIndex);
+      
+      console.log('🗑️ Deleted PDF:', pdfName);
+      updatePdfCountDisplay();
+    })
+    .catch(error => {
+      console.error('❌ Error deleting PDF:', error);
+      // Still remove from local state even if server request fails
+      appState.pdfsList.splice(index, 1);
+      
+      if (appState.selectedPdfIndex >= appState.pdfsList.length) {
+        appState.selectedPdfIndex = appState.pdfsList.length - 1;
+      }
+      
+      localStorage.setItem('pdfs_backup', JSON.stringify(appState.pdfsList));
+      localStorage.setItem('selectedPdfIndex_backup', appState.selectedPdfIndex);
+      
+      updatePdfCountDisplay();
+      alert('Note: PDF removed locally, but server deletion may need manual cleanup.');
+    });
   }
 }
 
 function addMorePdfs() {
   // Clear the file input and trigger it again for adding more PDFs
   const fileInput = document.getElementById('main-pdf-file');
-  fileInput.value = ''; // Reset
-  fileInput.click();
+  fileInput.value = ''; // Reset file input completely
+  
+  // Trigger click in next frame to ensure value is cleared first
+  setTimeout(() => {
+    try {
+      fileInput.click();
+    } catch (error) {
+      console.error('❌ Error opening file picker:', error);
+      alert('Failed to open file picker. Please try again.');
+    }
+  }, 0);
+  
   closePdfDropdown();
 }
 

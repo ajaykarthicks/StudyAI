@@ -44,7 +44,6 @@
           <i class="fas fa-brain"></i>
           <span>StudyAI</span>
         </div>
-        <div id="user-info-mobile" class="user-info-mobile"></div>
       </div>
       <div class="navbar-right">
         <div id="user-info-header" class="user-info-header"></div>
@@ -262,5 +261,19 @@
   </div>
 
   <script src="app.js"></script>
+  
+  <!-- Upload Loading Overlay -->
+  <div id="upload-loading" class="upload-loading">
+    <div class="loading-spinner">
+      <div class="spinner"></div>
+      <p>Uploading your PDF files...</p>
+    </div>
+  </div>
+  
+  <!-- Success Popup -->
+  <div id="success-popup" class="success-popup">
+    <i class="fas fa-check-circle success-popup-icon"></i>
+    <div class="success-popup-text">Files uploaded successfully!</div>
+  </div>
 </body>
 </html>
