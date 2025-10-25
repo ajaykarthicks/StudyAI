@@ -2030,7 +2030,7 @@ input:checked + .toggle-slider:before {
      ============================================ */
   
   .tool-controls {
-    padding: 0.75rem 1rem;
+    padding: 0.75rem 0;
     gap: 0.75rem;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
@@ -2049,7 +2049,7 @@ input:checked + .toggle-slider:before {
     align-items: center;
     justify-content: center;
     gap: var(--spacing-xl);
-    padding: var(--spacing-3xl) var(--spacing-lg);
+    padding: var(--spacing-3xl) 0;
     background: var(--background);
     border-bottom: none;
   }
@@ -2063,6 +2063,8 @@ input:checked + .toggle-slider:before {
     padding: var(--spacing-md) var(--spacing-3xl);
     font-size: 1.1rem;
     box-shadow: 0 4px 15px rgba(0, 212, 255, 0.2);
+    width: 90%;
+    max-width: 400px;
   }
   
   .tool-controls.centered .control-group {
@@ -2118,7 +2120,7 @@ input:checked + .toggle-slider:before {
     align-items: center;
     justify-content: flex-end;
     gap: 0.5rem;
-    padding: 0.75rem 1rem;
+    padding: 0.75rem 0;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
   }
