@@ -2105,11 +2105,12 @@ input:checked + .toggle-slider:before {
   }
   
   .button-generate {
-    padding: 0.6rem 1rem;
-    font-size: 0.9rem;
-    min-height: 44px;
+    padding: 0.75rem 1.5rem;
+    font-size: 0.95rem;
+    min-height: 48px;
     white-space: nowrap;
     flex-shrink: 0;
+    min-width: fit-content;
   }
   
   .tool-controls.right-aligned {
@@ -2212,6 +2213,39 @@ input:checked + .toggle-slider:before {
   /* ============================================
      QUIZ - MOBILE
      ============================================ */
+  
+  .quiz-header {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    align-items: center;
+    padding-bottom: 0.75rem;
+  }
+  
+  .quiz-header h3 {
+    font-size: 0.9rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  
+  .quiz-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+  }
+  
+  .button-show-all-answers {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    min-width: auto;
+    flex-shrink: 0;
+  }
+  
+  .button-show-all-answers i {
+    font-size: 0.85rem;
+  }
   
   .quiz-question {
     padding: 0.75rem;
