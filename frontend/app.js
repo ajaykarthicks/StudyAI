@@ -894,7 +894,7 @@ async function handleSummarize() {
     toolControls.classList.add('right-aligned');
   }
   
-  resultBox.textContent = 'Generating summary...';
+  resultBox.innerHTML = '<div class="summary-loading"><i class="fas fa-spinner fa-spin"></i> Generating summary...</div>';
 
   // Check if PDF is loaded
   if (!appState.pdfText && !appState.pdfBase64) {
@@ -903,7 +903,7 @@ async function handleSummarize() {
       appState.pdfText = backup;
       console.log('📄 Restored PDF from localStorage');
     } else {
-      resultBox.textContent = 'Error: No PDF uploaded';
+      resultBox.innerHTML = '<div class="summary-error"><i class="fas fa-exclamation-circle"></i> Error: No PDF uploaded</div>';
       console.error('❌ No PDF in appState or localStorage');
       return;
     }
@@ -923,12 +923,52 @@ async function handleSummarize() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to summarize');
     
-    resultBox.textContent = data.summary;
+    // Parse and format summary with animation
+    displaySummaryPoints(data.summary, resultBox);
     console.log('✅ Summary generated');
   } catch (error) {
-    resultBox.textContent = `Error: ${error.message}`;
+    resultBox.innerHTML = `<div class="summary-error"><i class="fas fa-exclamation-circle"></i> Error: ${error.message}</div>`;
     console.error('❌ Summarize error:', error);
   }
+}
+
+function displaySummaryPoints(summary, resultBox) {
+  // Parse summary text into points
+  const lines = summary.split('\n').filter(line => line.trim().length > 0);
+  
+  resultBox.innerHTML = '';
+  resultBox.style.display = 'flex';
+  resultBox.style.flexDirection = 'column';
+  resultBox.style.gap = '12px';
+  
+  // Animate each point one by one
+  lines.forEach((line, index) => {
+    const cleanedLine = line.replace(/^[-*•]\s*/, '').trim();
+    
+    const pointElement = document.createElement('div');
+    pointElement.className = 'summary-point';
+    pointElement.style.opacity = '0';
+    pointElement.style.transform = 'translateX(-20px)';
+    pointElement.style.transition = `all 0.5s ease-out ${index * 100}ms`;
+    
+    const bullet = document.createElement('div');
+    bullet.className = 'summary-bullet';
+    bullet.innerHTML = '<i class="fas fa-check-circle"></i>';
+    
+    const text = document.createElement('div');
+    text.className = 'summary-text';
+    text.textContent = cleanedLine;
+    
+    pointElement.appendChild(bullet);
+    pointElement.appendChild(text);
+    resultBox.appendChild(pointElement);
+    
+    // Trigger animation
+    setTimeout(() => {
+      pointElement.style.opacity = '1';
+      pointElement.style.transform = 'translateX(0)';
+    }, 10);
+  });
 }
 
 // ============================================
