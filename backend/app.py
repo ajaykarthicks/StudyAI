@@ -80,15 +80,20 @@ _groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # Unified chat helper: Groq only
 
-def llm_chat(messages, max_tokens=500, temperature=0.2):
+def llm_chat(messages, max_tokens=None, temperature=0.2):
     if not _groq_client:
         raise RuntimeError("GROQ_API_KEY is not set on the server")
-    resp = _groq_client.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=messages,
-        max_tokens=max_tokens,
-        temperature=temperature
-    )
+    
+    # If max_tokens is not specified, let Groq use its default (no limit)
+    kwargs = {
+        "model": GROQ_MODEL,
+        "messages": messages,
+        "temperature": temperature
+    }
+    if max_tokens is not None:
+        kwargs["max_tokens"] = max_tokens
+    
+    resp = _groq_client.chat.completions.create(**kwargs)
     return resp.choices[0].message.content
 
 # OAuth scopes (use full URIs to avoid scope-change warnings)
@@ -408,13 +413,11 @@ def chat_with_pdf():
         return jsonify({"error": "Question is required"}), 400
 
     try:
-        context_snippet = pdf_text[:12000]  # Keep prompt reasonable
         answer = llm_chat(
             messages=[
-                {"role": "system", "content": f"You are a helpful assistant. Answer ONLY using the information in this document. If not found, say you don't know. Document:\n{context_snippet}"},
+                {"role": "system", "content": f"You are a helpful assistant. Answer ONLY using the information in this document. If not found, say you don't know. Document:\n{pdf_text}"},
                 {"role": "user", "content": question}
             ],
-            max_tokens=500,
             temperature=0.2
         )
         return jsonify({"answer": answer})
@@ -434,9 +437,8 @@ def summarize_pdf():
         summary = llm_chat(
             messages=[
                 {"role": "system", "content": "Summarize the following document clearly and concisely in bullet points."},
-                {"role": "user", "content": pdf_text[:12000]}
+                {"role": "user", "content": pdf_text}
             ],
-            max_tokens=400,
             temperature=0.3
         )
         return jsonify({"summary": summary})
@@ -457,9 +459,8 @@ def generate_quiz():
         content = llm_chat(
             messages=[
                 {"role": "system", "content": f"Generate {num_questions} multiple-choice questions based ONLY on the document. Return STRICT JSON: an array of objects with fields: question (string), options (array of 4 strings), correct_answer_index (0-3). No extra text."},
-                {"role": "user", "content": pdf_text[:12000]}
+                {"role": "user", "content": pdf_text}
             ],
-            max_tokens=800,
             temperature=0.3
         )
 
@@ -489,9 +490,8 @@ def generate_flashcards():
         content = llm_chat(
             messages=[
                 {"role": "system", "content": f"Create {num_cards} flashcards from the document. Return STRICT JSON: an array of objects with 'front' and 'back' strings. No extra commentary."},
-                {"role": "user", "content": pdf_text[:12000]}
+                {"role": "user", "content": pdf_text}
             ],
-            max_tokens=800,
             temperature=0.3
         )
 
