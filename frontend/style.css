@@ -249,7 +249,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--spacing-xl);
+  padding: var(--spacing-md);
   background: var(--background);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -259,13 +259,13 @@ body {
 .upload-box {
   background: var(--surface);
   border-radius: var(--radius-xl);
-  padding: var(--spacing-2xl);
+  padding: var(--spacing-xl);
   max-width: 500px;
   width: 100%;
   text-align: center;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
   border: 1px solid var(--border);
-  max-height: 90vh;
+  max-height: calc(100vh - 200px);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -421,12 +421,15 @@ body {
   left: 50%;
   transform: translate(-50%, -50%) scale(0.8);
   background: var(--surface);
-  padding: var(--spacing-3xl);
+  padding: var(--spacing-3xl) var(--spacing-2xl);
   border-radius: var(--radius-xl);
   text-align: center;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
   z-index: 10000;
   animation: popupShow 0.5s ease-out forwards;
+  min-width: 350px;
+  max-width: 500px;
+  word-wrap: break-word;
 }
 
 .success-popup.active {
@@ -874,6 +877,14 @@ input:checked + .toggle-slider:before {
 
 .dropdown-pdf-content:hover {
   color: var(--primary);
+}
+
+.pdf-checkbox {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: var(--primary);
+  flex-shrink: 0;
 }
 
 .dropdown-pdf-info {

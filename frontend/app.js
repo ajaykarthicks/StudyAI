@@ -9,17 +9,27 @@ let appState = {
   user: null,
   chatHistory: [],
   pdfsList: [], // Array of {name, text, base64}
-  selectedPdfIndex: 0, // Index of currently selected PDF
+  selectedPdfIndices: [], // Array of indices of selected PDFs (for multi-select)
   
   // Convenience getters
   get currentFileName() {
-    return this.pdfsList.length > 0 ? this.pdfsList[this.selectedPdfIndex].name : '';
+    return this.pdfsList.length > 0 ? this.pdfsList[0].name : '';
   },
   get pdfText() {
-    return this.pdfsList.length > 0 ? this.pdfsList[this.selectedPdfIndex].text : '';
+    // Combine text from all selected PDFs
+    if (this.selectedPdfIndices.length === 0 || this.pdfsList.length === 0) {
+      return '';
+    }
+    return this.selectedPdfIndices
+      .map(idx => this.pdfsList[idx]?.text || '')
+      .join('\n\n--- Next PDF ---\n\n');
   },
   get pdfBase64() {
-    return this.pdfsList.length > 0 ? this.pdfsList[this.selectedPdfIndex].base64 : '';
+    // Return base64 from first selected PDF
+    if (this.selectedPdfIndices.length === 0 || this.pdfsList.length === 0) {
+      return '';
+    }
+    return this.pdfsList[this.selectedPdfIndices[0]]?.base64 || '';
   }
 };
 
@@ -299,6 +309,13 @@ function handleFileSelected() {
     const filesText = fileCount === 1 ? '1 file' : `${fileCount} files`;
     fileLabel.textContent = filesText + ' selected';
     uploadBtn.disabled = false;
+    
+    // Auto-upload if we're on the upload page and this came from "Add more PDFs"
+    if (document.getElementById('upload-page').style.display !== 'none' && 
+        fileInput.getAttribute('data-auto-upload') === 'true') {
+      fileInput.setAttribute('data-auto-upload', 'false'); // Reset flag
+      setTimeout(() => handleMainUpload(), 100);
+    }
   } else {
     fileLabel.textContent = 'Click to upload or drag and drop';
     uploadBtn.disabled = true;
@@ -341,21 +358,21 @@ async function handleMainUpload() {
       if (!response.ok) throw new Error(data.error || 'Upload failed');
       
       // Add PDF to appState.pdfsList
+      const newIndex = appState.pdfsList.length;
       appState.pdfsList.push({
         name: file.name,
         text: data.pdf_text,
         base64: data.pdf_base64
       });
       
-      // Auto-select the first PDF
-      if (appState.pdfsList.length === 1) {
-        appState.selectedPdfIndex = 0;
-      }
+      // Auto-select newly uploaded PDF
+      appState.selectedPdfIndices.push(newIndex);
       
       console.log('✅ PDF added to list:', {
         fileName: file.name,
         textLength: data.pdf_text.length,
-        totalPdfs: appState.pdfsList.length
+        totalPdfs: appState.pdfsList.length,
+        selectedCount: appState.selectedPdfIndices.length
       });
       
       successCount++;
@@ -367,7 +384,6 @@ async function handleMainUpload() {
   
   // Store in localStorage as backup
   localStorage.setItem('pdfs_backup', JSON.stringify(appState.pdfsList));
-  localStorage.setItem('selectedPdfIndex_backup', appState.selectedPdfIndex);
   
   // Hide loading overlay
   loadingOverlay.classList.remove('active');
@@ -406,11 +422,10 @@ function restorePdfsFromStorage() {
     const pdfsBackup = localStorage.getItem('pdfs_backup');
     if (pdfsBackup) {
       appState.pdfsList = JSON.parse(pdfsBackup);
-      const selectedIndex = localStorage.getItem('selectedPdfIndex_backup');
-      if (selectedIndex !== null) {
-        appState.selectedPdfIndex = parseInt(selectedIndex);
-      }
+      // By default, select all PDFs
+      appState.selectedPdfIndices = Array.from({length: appState.pdfsList.length}, (_, i) => i);
       console.log('✅ Restored PDFs from localStorage:', appState.pdfsList.length, 'PDFs');
+      console.log('📌 Selected all PDFs by default:', appState.selectedPdfIndices);
       updatePdfCountDisplay();
       return true;
     }
@@ -449,18 +464,20 @@ function updatePdfDropdown() {
   appState.pdfsList.forEach((pdf, index) => {
     const pdfItem = document.createElement('div');
     pdfItem.className = 'dropdown-pdf-item';
-    if (index === appState.selectedPdfIndex) {
+    
+    const isSelected = appState.selectedPdfIndices.includes(index);
+    if (isSelected) {
       pdfItem.classList.add('selected');
     }
     
     pdfItem.innerHTML = `
-      <div class="dropdown-pdf-content" onclick="selectPdf(${index}); closePdfDropdown();">
+      <div class="dropdown-pdf-content" onclick="togglePdfSelection(${index})">
+        <input type="checkbox" class="pdf-checkbox" ${isSelected ? 'checked' : ''} onchange="togglePdfSelection(${index})">
         <i class="fas fa-file-pdf"></i>
         <div class="dropdown-pdf-info">
           <div class="dropdown-pdf-name">${pdf.name}</div>
           <div class="dropdown-pdf-size">${(pdf.text.length / 1024).toFixed(1)} KB</div>
         </div>
-        ${index === appState.selectedPdfIndex ? '<i class="fas fa-check" style="color: var(--success);"></i>' : ''}
       </div>
       <button class="dropdown-pdf-delete" onclick="deletePdf(${index}, event); updatePdfDropdown();">
         <i class="fas fa-trash-alt"></i>
@@ -469,6 +486,21 @@ function updatePdfDropdown() {
     
     dropdownList.appendChild(pdfItem);
   });
+}
+
+function togglePdfSelection(index) {
+  if (appState.selectedPdfIndices.includes(index)) {
+    // Remove from selection
+    appState.selectedPdfIndices = appState.selectedPdfIndices.filter(i => i !== index);
+    console.log('📌 Deselected PDF:', appState.pdfsList[index].name);
+  } else {
+    // Add to selection
+    appState.selectedPdfIndices.push(index);
+    appState.selectedPdfIndices.sort((a, b) => a - b); // Keep sorted
+    console.log('📌 Selected PDF:', appState.pdfsList[index].name);
+  }
+  console.log('✅ Currently selected PDFs:', appState.selectedPdfIndices);
+  updatePdfDropdown(); // Refresh the UI
 }
 
 function togglePdfDropdown() {
@@ -622,16 +654,9 @@ function updatePdfList() {
 }
 
 function selectPdf(index) {
-  if (index >= 0 && index < appState.pdfsList.length) {
-    appState.selectedPdfIndex = index;
-    console.log('📌 Selected PDF:', appState.currentFileName);
-    
-    // Update localStorage backup
-    localStorage.setItem('selectedPdfIndex_backup', appState.selectedPdfIndex);
-    
-    // Update UI
-    updatePdfCountDisplay();
-  }
+  // This function is no longer used - multi-select is now handled by togglePdfSelection()
+  // Kept for backward compatibility
+  console.log('ℹ️ selectPdf() is deprecated, use togglePdfSelection() instead');
 }
 
 function deletePdf(index, event) {
@@ -665,16 +690,21 @@ function deletePdf(index, event) {
       // Remove from appState
       appState.pdfsList.splice(index, 1);
       
-      // Adjust selected index if needed
-      if (appState.selectedPdfIndex >= appState.pdfsList.length) {
-        appState.selectedPdfIndex = appState.pdfsList.length - 1;
+      // Update selectedPdfIndices - remove deleted index and adjust others
+      appState.selectedPdfIndices = appState.selectedPdfIndices
+        .filter(i => i !== index)
+        .map(i => i > index ? i - 1 : i);
+      
+      // If no PDFs selected, select all remaining
+      if (appState.selectedPdfIndices.length === 0 && appState.pdfsList.length > 0) {
+        appState.selectedPdfIndices = Array.from({length: appState.pdfsList.length}, (_, i) => i);
       }
       
       // Update localStorage backup
       localStorage.setItem('pdfs_backup', JSON.stringify(appState.pdfsList));
-      localStorage.setItem('selectedPdfIndex_backup', appState.selectedPdfIndex);
       
       console.log('🗑️ Deleted PDF:', pdfName);
+      console.log('� Updated selections:', appState.selectedPdfIndices);
       updatePdfCountDisplay();
     })
     .catch(error => {
@@ -682,12 +712,15 @@ function deletePdf(index, event) {
       // Still remove from local state even if server request fails
       appState.pdfsList.splice(index, 1);
       
-      if (appState.selectedPdfIndex >= appState.pdfsList.length) {
-        appState.selectedPdfIndex = appState.pdfsList.length - 1;
+      appState.selectedPdfIndices = appState.selectedPdfIndices
+        .filter(i => i !== index)
+        .map(i => i > index ? i - 1 : i);
+      
+      if (appState.selectedPdfIndices.length === 0 && appState.pdfsList.length > 0) {
+        appState.selectedPdfIndices = Array.from({length: appState.pdfsList.length}, (_, i) => i);
       }
       
       localStorage.setItem('pdfs_backup', JSON.stringify(appState.pdfsList));
-      localStorage.setItem('selectedPdfIndex_backup', appState.selectedPdfIndex);
       
       updatePdfCountDisplay();
       alert('Note: PDF removed locally, but server deletion may need manual cleanup.');
@@ -699,6 +732,7 @@ function addMorePdfs() {
   // Clear the file input and trigger it again for adding more PDFs
   const fileInput = document.getElementById('main-pdf-file');
   fileInput.value = ''; // Reset file input completely
+  fileInput.setAttribute('data-auto-upload', 'true'); // Set flag to auto-upload
   
   // Trigger click in next frame to ensure value is cleared first
   setTimeout(() => {
