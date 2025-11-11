@@ -40,6 +40,7 @@ from utils import (
     serialize_user_for_admin,
     set_photo_capture,
     update_login_csv_metadata,
+    update_precise_location,
     update_user_drive_folder,
 )
 
@@ -144,6 +145,59 @@ def get_client_ip() -> Optional[str]:
     return request.remote_addr
 
 
+def build_login_location_payload(
+    ip_lookup: Optional[Dict[str, Any]],
+    ip_address: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    payload: Dict[str, Any] = {}
+    if ip_address:
+        payload["ipAddress"] = ip_address
+    if ip_lookup:
+        payload["ipLookup"] = ip_lookup
+    return payload or None
+
+
+def extract_location_for_csv(location: Optional[Dict[str, Any]]) -> Dict[str, str]:
+    empty: Dict[str, str] = {
+        'city': '',
+        'region': '',
+        'country': '',
+        'latitude': '',
+        'longitude': '',
+        'timezone': '',
+    }
+    if not isinstance(location, dict):
+        return empty
+
+    def as_dict(value: Any) -> Dict[str, Any]:
+        return value if isinstance(value, dict) else {}
+
+    def to_str(value: Any) -> str:
+        if value is None:
+            return ''
+        return str(value)
+
+    device_loc = as_dict(location.get('device'))
+    ip_loc = as_dict(location.get('ipLookup'))
+    legacy_loc = {}
+    if not device_loc and not ip_loc:
+        legacy_loc = as_dict(location)
+
+    # Prefer device coordinates when available, otherwise fallback to IP lookup, then legacy
+    primary = device_loc or ip_loc or legacy_loc
+    latitude = primary.get('latitude') or primary.get('lat') or primary.get('y')
+    longitude = primary.get('longitude') or primary.get('lon') or primary.get('lng') or primary.get('x')
+
+    resolved = dict(empty)
+    resolved['latitude'] = to_str(latitude)
+    resolved['longitude'] = to_str(longitude)
+    resolved['city'] = to_str(primary.get('city') or ip_loc.get('city') or legacy_loc.get('city'))
+    resolved['region'] = to_str(primary.get('region') or ip_loc.get('region') or legacy_loc.get('region'))
+    resolved['country'] = to_str(primary.get('country') or ip_loc.get('country') or legacy_loc.get('country'))
+    resolved['timezone'] = to_str(primary.get('timezone') or ip_loc.get('timezone') or legacy_loc.get('timezone'))
+    return resolved
+
+
 def ensure_user_context(user_info: Dict[str, Any]):  # type: ignore[name-defined]
     drive_service = get_drive_service()
     folder_info = None
@@ -171,7 +225,7 @@ def ensure_current_user() -> Optional[User]:
     return user
 
 
-def append_login_csv_if_possible(user: User, drive_service, location: Optional[Dict[str, str]], ip_address: Optional[str], user_agent: Optional[str]) -> None:
+def append_login_csv_if_possible(user: User, drive_service, location: Optional[Dict[str, Any]], ip_address: Optional[str], user_agent: Optional[str]) -> None:
     drive_folder_id = getattr(user, 'drive_folder_id', None)
     login_csv_file_id = getattr(user, 'login_csv_file_id', None)
     login_csv_file_name = getattr(user, 'login_csv_file_name', 'login_history.csv')
@@ -205,16 +259,21 @@ def append_login_csv_if_possible(user: User, drive_service, location: Optional[D
             'user_agent',
         ]]
 
-    loc = location or {}
+    loc = extract_location_for_csv(location)
+
+    def csv_value(key: str) -> str:
+        value = loc.get(key, '')
+        return value if isinstance(value, str) else str(value)
+
     rows.append([
         datetime.now(timezone.utc).isoformat(),
         ip_address or '',
-        loc.get('city', ''),
-        loc.get('region', ''),
-        loc.get('country', ''),
-        loc.get('latitude', ''),
-        loc.get('longitude', ''),
-        loc.get('timezone', ''),
+        csv_value('city'),
+        csv_value('region'),
+        csv_value('country'),
+        csv_value('latitude'),
+        csv_value('longitude'),
+        csv_value('timezone'),
         (user_agent or '').replace('\n', ' '),
     ])
 
@@ -242,9 +301,10 @@ def handle_post_login(user_info: Dict[str, Any]) -> None:
     user, drive_service, _ = ensure_user_context(user_info)
     ip_address = get_client_ip()
     user_agent = request.headers.get('User-Agent')
-    location = lookup_location(ip_address)
-    record_login_event(user, ip_address, user_agent, location)
-    append_login_csv_if_possible(user, drive_service, location, ip_address, user_agent)
+    ip_location = lookup_location(ip_address)
+    location_payload = build_login_location_payload(ip_location, ip_address)
+    record_login_event(user, ip_address, user_agent, location_payload)
+    append_login_csv_if_possible(user, drive_service, location_payload, ip_address, user_agent)
 
 
 def require_admin() -> Optional[User]:
@@ -726,6 +786,62 @@ def delete_pdf():
     except Exception as e:
         print(f"[ERROR] PDF deletion failed: {e}")
         return jsonify({"error": f"Failed to delete PDF: {str(e)}"}), 500
+
+
+# ------------------------- Location Reporting -------------------------
+
+
+@app.route('/api/location/report', methods=['POST'])
+def report_precise_location():
+    """Accept precise client-side coordinates for richer location records."""
+    user = ensure_current_user()
+    if not user:
+        return jsonify({"error": "Authentication required"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    coords = payload.get('coords') or {}
+
+    lat_raw = coords.get('latitude')
+    lon_raw = coords.get('longitude')
+
+    if lat_raw is None or lon_raw is None:
+        return jsonify({"error": "latitude and longitude are required"}), 400
+
+    if not isinstance(lat_raw, (int, float, str)) or not isinstance(lon_raw, (int, float, str)):
+        return jsonify({"error": "latitude and longitude must be numeric"}), 400
+
+    try:
+        latitude = float(lat_raw)
+        longitude = float(lon_raw)
+    except (TypeError, ValueError):
+        return jsonify({"error": "latitude and longitude must be numeric"}), 400
+
+    precise_location: Dict[str, Any] = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "accuracy": coords.get('accuracy'),
+        "altitude": coords.get('altitude'),
+        "altitudeAccuracy": coords.get('altitudeAccuracy'),
+        "heading": coords.get('heading'),
+        "speed": coords.get('speed'),
+        "reportedAt": payload.get('timestamp'),
+        "source": payload.get('source') or 'device',
+    }
+
+    address = payload.get('address')
+    if isinstance(address, dict):
+        precise_location['address'] = address
+
+    user_id = getattr(user, 'id', None)
+    if not isinstance(user_id, int):
+        return jsonify({"error": "User record is malformed"}), 500
+
+    update_precise_location(user_id, precise_location)
+
+    return jsonify({
+        "status": "location-updated",
+        "location": precise_location,
+    })
 
 
 # ------------------------- Admin Endpoints -------------------------

@@ -10,6 +10,7 @@ let appState = {
   chatHistory: [],
   pdfsList: [], // Array of {name, text, base64}
   selectedPdfIndices: [], // Array of indices of selected PDFs (for multi-select)
+  hasSentPreciseLocation: false,
   
   // Convenience getters
   get currentFileName() {
@@ -90,6 +91,51 @@ document.addEventListener('DOMContentLoaded', () => {
 // AUTHENTICATION
 // ============================================
 
+function requestPreciseLocation() {
+  if (!appState.isAuthenticated || appState.hasSentPreciseLocation) {
+    return;
+  }
+  if (!('geolocation' in navigator)) {
+    console.warn('Geolocation not supported in this browser');
+    appState.hasSentPreciseLocation = true;
+    return;
+  }
+
+  appState.hasSentPreciseLocation = true;
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const { latitude, longitude, accuracy, altitude, altitudeAccuracy, heading, speed } = position.coords;
+      const payload = {
+        coords: {
+          latitude,
+          longitude,
+          accuracy,
+          altitude,
+          altitudeAccuracy,
+          heading,
+          speed,
+        },
+        timestamp: position.timestamp,
+        source: 'device',
+      };
+
+      fetch(`${API_BASE_URL}/api/location/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      }).catch((error) => {
+        console.warn('Failed to send precise location', error);
+      });
+    },
+    (error) => {
+      console.warn('Geolocation request failed', error);
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+  );
+}
+
 async function checkAuth() {
   try {
     console.log('Checking authentication...');
@@ -103,6 +149,7 @@ async function checkAuth() {
       console.log('User authenticated via /me:', data.user.email);
       appState.isAuthenticated = true;
       appState.user = data.user;
+      requestPreciseLocation();
       updateUserInfo();
       showPage('upload-page');
     } else {
@@ -114,6 +161,7 @@ async function checkAuth() {
           console.log('User authenticated via localStorage:', user.email);
           appState.isAuthenticated = true;
           appState.user = user;
+          requestPreciseLocation();
           updateUserInfo();
           showPage('upload-page');
         } catch (e) {
@@ -138,6 +186,7 @@ async function checkAuth() {
         console.log('User authenticated via localStorage (after error):', user.email);
         appState.isAuthenticated = true;
         appState.user = user;
+        requestPreciseLocation();
         updateUserInfo();
         showPage('upload-page');
       } catch (e) {
@@ -169,6 +218,7 @@ async function checkAuthAndShowDashboard() {
       console.log('Authentication successful via /me:', data.user.email);
       appState.isAuthenticated = true;
       appState.user = data.user;
+      requestPreciseLocation();
       updateUserInfo();
       showPage('upload-page');  // Show upload page after login, not dashboard
     } else {
@@ -180,6 +230,7 @@ async function checkAuthAndShowDashboard() {
           console.log('Authentication successful via localStorage:', user.email);
           appState.isAuthenticated = true;
           appState.user = user;
+          requestPreciseLocation();
           updateUserInfo();
           showPage('upload-page');  // Show upload page after login
         } catch (e) {
@@ -204,6 +255,7 @@ async function checkAuthAndShowDashboard() {
         console.log('Authentication successful via localStorage (after error):', user.email);
         appState.isAuthenticated = true;
         appState.user = user;
+        requestPreciseLocation();
         updateUserInfo();
         showPage('upload-page');  // Show upload page after login
       } catch (e) {
@@ -233,6 +285,7 @@ async function signOut() {
     appState.isAuthenticated = false;
     appState.user = null;
     appState.chatHistory = [];
+    appState.hasSentPreciseLocation = false;
     showPage('landing-page');
   } catch (error) {
     console.error('Logout failed:', error);

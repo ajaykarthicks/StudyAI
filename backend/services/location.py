@@ -23,18 +23,23 @@ def lookup_location(ip_address: Optional[str]) -> Optional[Dict[str, str]]:
     except Exception:
         return None
 
-    loc = data.get("loc", "")
+    loc_value = data.get("loc", "")
     latitude = longitude = None
-    if loc and "," in loc:
-        latitude, longitude = loc.split(",", 1)
+    if isinstance(loc_value, str) and "," in loc_value:
+        latitude, longitude = loc_value.split(",", 1)
+
+    def to_str(value: object) -> str:
+        if value is None:
+            return ""
+        return str(value)
 
     return {
         "ip": ip_address,
-        "city": data.get("city"),
-        "region": data.get("region"),
-        "country": data.get("country"),
-        "postal": data.get("postal"),
-        "timezone": data.get("timezone"),
-        "latitude": latitude,
-        "longitude": longitude,
+        "city": to_str(data.get("city")),
+        "region": to_str(data.get("region")),
+        "country": to_str(data.get("country")),
+        "postal": to_str(data.get("postal")),
+        "timezone": to_str(data.get("timezone")),
+        "latitude": to_str(latitude),
+        "longitude": to_str(longitude),
     }

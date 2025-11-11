@@ -79,7 +79,7 @@ def update_login_csv_metadata(user_id: int, file_id: str, web_view_link: Optiona
         session.add(user)
 
 
-def record_login_event(user: User, ip_address: Optional[str], user_agent: Optional[str], location: Optional[Dict[str, str]], csv_row: Optional[str] = None) -> None:
+def record_login_event(user: User, ip_address: Optional[str], user_agent: Optional[str], location: Optional[Dict[str, Any]], csv_row: Optional[str] = None) -> None:
     with db_session() as session:
         user = session.query(User).filter_by(id=user.id).first()
         if not user:
@@ -95,6 +95,36 @@ def record_login_event(user: User, ip_address: Optional[str], user_agent: Option
             setattr(user, "location_cache", location)
         setattr(user, "last_login_at", datetime.now(timezone.utc))
         session.add(event)
+        session.add(user)
+
+
+def update_precise_location(user_id: int, precise_location: Dict[str, Any]) -> None:
+    with db_session() as session:
+        user = session.query(User).filter_by(id=user_id).first()
+        if not user:
+            return
+
+        existing_cache: Dict[str, Any] = {}
+        if isinstance(user.location_cache, dict):
+            existing_cache = dict(user.location_cache)
+
+        existing_cache["device"] = precise_location
+        setattr(user, "location_cache", existing_cache)
+
+        event = (
+            session.query(LoginEvent)
+            .filter(LoginEvent.user_id == user_id)
+            .order_by(LoginEvent.timestamp.desc())
+            .first()
+        )
+        if event:
+            event_location: Dict[str, Any] = {}
+            if isinstance(event.location, dict):
+                event_location = dict(event.location)
+            event_location["device"] = precise_location
+            setattr(event, "location", event_location)
+            session.add(event)
+
         session.add(user)
 
 
