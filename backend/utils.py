@@ -7,8 +7,8 @@ from typing import Any, Dict, Optional
 
 from flask import request
 
-from .db import db_session
-from .models import DailyUploadStat, LoginEvent, PdfUpload, PhotoCaptureEvent, User
+from db import db_session
+from models import DailyUploadStat, LoginEvent, PdfUpload, PhotoCaptureEvent, User
 
 
 def decode_user_cookie() -> Optional[Dict[str, Any]]:

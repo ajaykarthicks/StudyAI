@@ -28,7 +28,7 @@ Base = declarative_base()
 
 
 def init_db() -> None:
-    from . import models  # noqa: F401  Ensures models are registered
+    import models  # noqa: F401  Ensures models are registered
 
     Base.metadata.create_all(bind=engine)
 

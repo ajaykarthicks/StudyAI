@@ -17,7 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import relationship
 
-from .db import Base
+from db import Base
 
 
 class User(Base):
