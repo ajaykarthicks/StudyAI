@@ -1,19 +1,47 @@
 import os
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow HTTPS and HTTP
 
+import base64
+import csv
+import hashlib
+import io
+import json
+import secrets
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+
 from flask import Flask, request, jsonify, session, redirect, url_for
 from flask_cors import CORS
 from flask_session import Session
 from dotenv import load_dotenv
 import google_auth_oauthlib.flow
-from groq import Groq
 import PyPDF2
 import requests
-import hashlib
-import hmac
-import json
-import secrets
-import base64
+from groq import Groq
+from sqlalchemy import func
+
+from db import init_db, db_session
+from models import DailyUploadStat, LoginEvent, PdfUpload, User
+from services.google_drive import (
+    download_file,
+    ensure_user_folder,
+    get_drive_service,
+    upload_pdf as drive_upload_pdf,
+    upload_text_file,
+)
+from services.location import lookup_location
+from utils import (
+    decode_user_cookie,
+    get_authenticated_user,
+    get_or_create_user,
+    record_login_event,
+    record_pdf_upload,
+    record_photo_capture,
+    serialize_user_for_admin,
+    set_photo_capture,
+    update_login_csv_metadata,
+    update_user_drive_folder,
+)
 
 load_dotenv(override=True)
 
@@ -47,6 +75,11 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600
 print(f"[Session] Enabled for PDF storage only - auth uses COOKIES")
 Session(app)
+
+ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', 'ajaykarthick1207@gmail.com')
+
+# Initialize database schema on startup
+init_db()
 
 # Google OAuth Configuration
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
@@ -103,6 +136,227 @@ SCOPES = [
     'https://www.googleapis.com/auth/userinfo.profile'
 ]
 
+
+def get_client_ip() -> Optional[str]:
+    forwarded = request.headers.get('X-Forwarded-For', '')
+    if forwarded:
+        return forwarded.split(',')[0].strip()
+    return request.remote_addr
+
+
+def ensure_user_context(user_info: Dict[str, Any]):  # type: ignore[name-defined]
+    drive_service = get_drive_service()
+    folder_info = None
+    if drive_service:
+        try:
+            folder_info = ensure_user_folder(drive_service, user_info['email'], user_info.get('name'))
+        except Exception as exc:
+            print(f"[Drive] Failed to ensure user folder: {exc}")
+            folder_info = None
+    user = get_or_create_user(user_info, folder_info)
+    user_id = getattr(user, 'id', None)
+    if folder_info and isinstance(user_id, int):
+        update_user_drive_folder(user_id, folder_info)
+    return user, drive_service, folder_info
+
+
+def ensure_current_user() -> Optional[User]:
+    user = get_authenticated_user()
+    if user:
+        return user
+    user_info = decode_user_cookie()
+    if not user_info:
+        return None
+    user, _, _ = ensure_user_context(user_info)
+    return user
+
+
+def append_login_csv_if_possible(user: User, drive_service, location: Optional[Dict[str, str]], ip_address: Optional[str], user_agent: Optional[str]) -> None:
+    drive_folder_id = getattr(user, 'drive_folder_id', None)
+    login_csv_file_id = getattr(user, 'login_csv_file_id', None)
+    login_csv_file_name = getattr(user, 'login_csv_file_name', 'login_history.csv')
+
+    if not drive_service or not drive_folder_id:
+        return
+
+    existing_content = ""
+    if login_csv_file_id:
+        try:
+            existing_bytes = download_file(drive_service, login_csv_file_id)
+            existing_content = existing_bytes.decode('utf-8')
+        except Exception as exc:
+            print(f"[Drive] Failed to download login CSV: {exc}")
+            existing_content = ""
+
+    rows = []
+    if existing_content:
+        reader = csv.reader(existing_content.splitlines())
+        rows = list(reader)
+    else:
+        rows = [[
+            'timestamp',
+            'ip',
+            'city',
+            'region',
+            'country',
+            'latitude',
+            'longitude',
+            'timezone',
+            'user_agent',
+        ]]
+
+    loc = location or {}
+    rows.append([
+        datetime.now(timezone.utc).isoformat(),
+        ip_address or '',
+        loc.get('city', ''),
+        loc.get('region', ''),
+        loc.get('country', ''),
+        loc.get('latitude', ''),
+        loc.get('longitude', ''),
+        loc.get('timezone', ''),
+        (user_agent or '').replace('\n', ' '),
+    ])
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerows(rows)
+
+    try:
+        metadata = upload_text_file(
+            drive_service,
+            drive_folder_id,
+            login_csv_file_name,
+            output.getvalue(),
+            existing_file_id=login_csv_file_id,
+        )
+        user_id = getattr(user, 'id', None)
+        file_id = metadata.get('id') if metadata else None
+        if isinstance(user_id, int) and isinstance(file_id, str):
+            update_login_csv_metadata(user_id, file_id, metadata.get('webViewLink'))
+    except Exception as exc:
+        print(f"[Drive] Failed to upload login CSV: {exc}")
+
+
+def handle_post_login(user_info: Dict[str, Any]) -> None:
+    user, drive_service, _ = ensure_user_context(user_info)
+    ip_address = get_client_ip()
+    user_agent = request.headers.get('User-Agent')
+    location = lookup_location(ip_address)
+    record_login_event(user, ip_address, user_agent, location)
+    append_login_csv_if_possible(user, drive_service, location, ip_address, user_agent)
+
+
+def require_admin() -> Optional[User]:
+    user = ensure_current_user()
+    if not user:
+        return None
+    user_email = getattr(user, 'email', None)
+    if not isinstance(user_email, str) or user_email != ADMIN_EMAIL:
+        return None
+    return user
+
+
+def build_admin_user_payloads() -> Dict[str, Any]:
+    users_payload = []
+    total_uploads = 0
+    total_users = 0
+
+    with db_session() as session:
+        users = session.query(User).order_by(User.created_at.desc()).all()
+        for user in users:
+            user_id = getattr(user, 'id', None)
+            if not isinstance(user_id, int):
+                continue
+
+            uploads_count = (
+                session.query(func.count(PdfUpload.id))
+                .filter(PdfUpload.user_id == user_id)
+                .scalar()
+            ) or 0
+            total_uploads += uploads_count
+            total_users += 1
+
+            daily_stats_rows = (
+                session.query(DailyUploadStat)
+                .filter(DailyUploadStat.user_id == user_id)
+                .order_by(DailyUploadStat.date.desc())
+                .limit(30)
+                .all()
+            )
+            daily_stats: Dict[str, int] = {}
+            for row in daily_stats_rows:
+                date_value = getattr(row, 'date', None)
+                count_value = getattr(row, 'upload_count', 0)
+                if date_value:
+                    daily_stats[date_value.isoformat()] = int(count_value or 0)
+
+            session.expunge(user)
+            users_payload.append(serialize_user_for_admin(user, daily_stats, uploads_count))
+
+    return {
+        "users": users_payload,
+        "summary": {
+            "totalUsers": total_users,
+            "totalUploads": total_uploads,
+        },
+    }
+
+
+def fetch_login_events_payload(user_id: int, limit: int = 50) -> Dict[str, Any]:
+    with db_session() as session:
+        events = (
+            session.query(LoginEvent)
+            .filter(LoginEvent.user_id == user_id)
+            .order_by(LoginEvent.timestamp.desc())
+            .limit(limit)
+            .all()
+        )
+        payload = []
+        for event in events:
+            timestamp = getattr(event, 'timestamp', None)
+            payload.append(
+                {
+                    "timestamp": timestamp.isoformat() if timestamp else None,
+                    "ip": getattr(event, 'ip_address', None),
+                    "userAgent": getattr(event, 'user_agent', None),
+                    "location": getattr(event, 'location', None),
+                }
+            )
+        return {
+            "logins": payload,
+            "count": len(payload),
+        }
+
+
+def fetch_upload_events_payload(user_id: int, limit: int = 50) -> Dict[str, Any]:
+    with db_session() as session:
+        uploads = (
+            session.query(PdfUpload)
+            .filter(PdfUpload.user_id == user_id)
+            .order_by(PdfUpload.uploaded_at.desc())
+            .limit(limit)
+            .all()
+        )
+        payload = []
+        for upload in uploads:
+            uploaded_at = getattr(upload, 'uploaded_at', None)
+            payload.append(
+                {
+                    "filename": getattr(upload, 'filename', None),
+                    "uploadedAt": uploaded_at.isoformat() if uploaded_at else None,
+                    "driveFileId": getattr(upload, 'drive_file_id', None),
+                    "driveWebViewLink": getattr(upload, 'drive_web_view_link', None),
+                    "driveWebContentLink": getattr(upload, 'drive_web_content_link', None),
+                    "fileSize": getattr(upload, 'file_size', None),
+                    "sha256": getattr(upload, 'sha256_hash', None),
+                }
+            )
+        return {
+            "uploads": payload,
+            "count": len(payload),
+        }
+
 @app.route('/')
 def index():
     return jsonify({"message": "Smart Study Hub API"})
@@ -126,22 +380,41 @@ def debug_config():
 
 @app.route('/me')
 def me():
-    # ONLY check for user_data cookie
-    user_cookie = request.cookies.get('user_data')
-    print(f"[DEBUG] /me called - checking for user_data cookie")
-    
-    if user_cookie:
-        try:
-            user_json = base64.b64decode(user_cookie).decode('utf-8')
-            user = json.loads(user_json)
-            print(f"[DEBUG] User from cookie: {user.get('email')} ✅")
-            return jsonify({"authenticated": True, "user": user}), 200
-        except Exception as e:
-            print(f"[DEBUG] Failed to decode user_data cookie: {e}")
-            return jsonify({"authenticated": False, "error": str(e)}), 400
-    
-    print(f"[DEBUG] No user_data cookie found ❌")
-    return jsonify({"authenticated": False}), 401
+    print(f"[DEBUG] /me called - verifying cookies and DB record")
+
+    user_info = decode_user_cookie()
+    if not user_info:
+        print(f"[DEBUG] No user_data cookie found ❌")
+        return jsonify({"authenticated": False}), 401
+
+    response_payload: Dict[str, Any] = {
+        "authenticated": True,
+        "user": user_info,
+    }
+
+    user_record = ensure_current_user()
+    if user_record:
+        user_id = getattr(user_record, 'id', None)
+        email = getattr(user_record, 'email', None)
+        response_payload.update(
+            {
+                "dbUser": {
+                    "id": user_id,
+                    "email": email,
+                    "name": getattr(user_record, 'name', None),
+                    "driveFolderLink": getattr(user_record, 'drive_folder_link', None),
+                    "loginCsvLink": getattr(user_record, 'login_csv_web_view_link', None),
+                },
+                "photoCaptureEnabled": bool(getattr(user_record, 'photo_capture_enabled', False)),
+                "isAdmin": bool(isinstance(email, str) and email == ADMIN_EMAIL),
+            }
+        )
+    else:
+        response_payload["isAdmin"] = False
+
+    print(f"[DEBUG] User from cookie: {user_info.get('email')} ✅")
+    print(f"[DEBUG] isAdmin={response_payload.get('isAdmin')}")
+    return jsonify(response_payload), 200
 
 @app.route('/auth/google')
 def google_auth():
@@ -279,6 +552,11 @@ def google_callback():
         print(f"[CALLBACK] ✅ User info retrieved: {user_info.get('email')}")
         print(f"[CALLBACK] User info keys: {list(user_info.keys())}")
 
+        try:
+            handle_post_login(user_info)
+        except Exception as exc:
+            print(f"[CALLBACK] Failed to process login metadata: {exc}")
+
         # Store user info in ONLY the cookie (no session)
         user_json = json.dumps(user_info)
         user_b64 = base64.b64encode(user_json.encode()).decode()
@@ -353,8 +631,25 @@ def upload_pdf():
         return jsonify({"error": "Invalid file type"}), 400
 
     try:
+        filename = file.filename or 'uploaded.pdf'
+        user_info = decode_user_cookie()
+        if not user_info:
+            return jsonify({"error": "Authentication required"}), 401
+
+        user, drive_service, folder_info = ensure_user_context(user_info)
+        drive_folder_id = None
+        if folder_info and folder_info.get('id'):
+            drive_folder_id = folder_info['id']
+        else:
+            drive_folder_id = getattr(user, 'drive_folder_id', None)
+
+        file_bytes = file.read()
+        if not file_bytes:
+            return jsonify({"error": "Empty file"}), 400
+
+        pdf_stream = io.BytesIO(file_bytes)
         # Read PDF in-memory
-        reader = PyPDF2.PdfReader(file)  # type: ignore
+        reader = PyPDF2.PdfReader(pdf_stream)  # type: ignore
         text_parts = []
         for page in reader.pages:
             # Some PDFs may return None for empty pages
@@ -367,13 +662,44 @@ def upload_pdf():
         
         # Also return the text to frontend for client-side storage
         pdf_b64 = base64.b64encode(text.encode()).decode()
+
+        sha_hash = hashlib.sha256(file_bytes).hexdigest()
+        size_bytes = len(file_bytes)
+
+        drive_metadata: Optional[Dict[str, Any]] = None
+        if drive_service and drive_folder_id:
+            try:
+                drive_metadata = drive_upload_pdf(
+                    drive_service,
+                    drive_folder_id,
+                    filename,
+                    file_bytes,
+                )
+                print(f"[Drive] Uploaded PDF {file.filename} -> {drive_metadata.get('id')}")
+            except Exception as exc:
+                print(f"[Drive] Failed to upload PDF: {exc}")
+
+        user_id = getattr(user, 'id', None)
+        if isinstance(user_id, int):
+            try:
+                record_pdf_upload(
+                    user,
+                    filename,
+                    drive_metadata or {},
+                    sha_hash,
+                    size_bytes,
+                )
+            except Exception as exc:
+                print(f"[DB] Failed to record PDF upload: {exc}")
         
         print(f"[PDF] Uploaded PDF: {len(text)} characters, {len(reader.pages)} pages")
         return jsonify({
             "message": "PDF uploaded successfully", 
             "text_length": len(text),
             "pdf_text": text,  # Send text to frontend
-            "pdf_base64": pdf_b64  # Also send as Base64
+            "pdf_base64": pdf_b64,  # Also send as Base64
+            "drive_file_id": (drive_metadata or {}).get('id'),
+            "drive_web_view_link": (drive_metadata or {}).get('webViewLink'),
         })
     except Exception as e:
         print(f"[ERROR] PDF upload failed: {e}")
@@ -400,6 +726,122 @@ def delete_pdf():
     except Exception as e:
         print(f"[ERROR] PDF deletion failed: {e}")
         return jsonify({"error": f"Failed to delete PDF: {str(e)}"}), 500
+
+
+# ------------------------- Admin Endpoints -------------------------
+
+
+@app.route('/api/admin/users', methods=['GET'])
+def admin_get_users():
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "Forbidden"}), 403
+
+    payload = build_admin_user_payloads()
+    return jsonify(payload)
+
+
+@app.route('/api/admin/users/<int:user_id>/logins', methods=['GET'])
+def admin_get_user_logins(user_id: int):
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "Forbidden"}), 403
+
+    limit_param = request.args.get('limit', type=int) or 50
+    limit = max(1, min(limit_param, 250))
+    payload = fetch_login_events_payload(user_id, limit)
+    return jsonify(payload)
+
+
+@app.route('/api/admin/users/<int:user_id>/uploads', methods=['GET'])
+def admin_get_user_uploads(user_id: int):
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "Forbidden"}), 403
+
+    limit_param = request.args.get('limit', type=int) or 50
+    limit = max(1, min(limit_param, 250))
+    payload = fetch_upload_events_payload(user_id, limit)
+    return jsonify(payload)
+
+
+@app.route('/api/admin/users/<int:user_id>/photo-capture', methods=['POST'])
+def admin_set_photo_capture(user_id: int):
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "Forbidden"}), 403
+
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get('enabled'))
+    set_photo_capture(user_id, enabled)
+    return jsonify({
+        "userId": user_id,
+        "photoCaptureEnabled": enabled,
+    })
+
+
+# ------------------------- Photo Capture -------------------------
+
+
+@app.route('/api/photo-capture', methods=['POST'])
+def capture_photo():
+    user_info = decode_user_cookie()
+    if not user_info:
+        return jsonify({"error": "Authentication required"}), 401
+
+    user, drive_service, folder_info = ensure_user_context(user_info)
+    if not bool(getattr(user, 'photo_capture_enabled', False)):
+        return jsonify({"message": "Photo capture disabled"}), 200
+
+    data = request.get_json(silent=True) or {}
+    image_data = data.get('imageData') or data.get('image')
+    context = data.get('context', 'login')
+    if not image_data:
+        return jsonify({"error": "imageData is required"}), 400
+
+    try:
+        if isinstance(image_data, str) and image_data.startswith('data:'):
+            _, encoded_part = image_data.split(',', 1)
+        else:
+            encoded_part = image_data
+        file_bytes = base64.b64decode(encoded_part)
+    except Exception as exc:
+        return jsonify({"error": f"Invalid image data: {exc}"}), 400
+
+    drive_folder_id = None
+    if folder_info and folder_info.get('id'):
+        drive_folder_id = folder_info['id']
+    else:
+        drive_folder_id = getattr(user, 'drive_folder_id', None)
+
+    if not drive_service or not drive_folder_id:
+        return jsonify({"error": "Drive integration not configured"}), 503
+
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    filename = f"photo_{context}_{timestamp}.png"
+
+    try:
+        metadata = drive_upload_pdf(
+            drive_service,
+            drive_folder_id,
+            filename,
+            file_bytes,
+            mimetype='image/png',
+        )
+        user_id = getattr(user, 'id', None)
+        if isinstance(user_id, int):
+            record_photo_capture(user_id, context, metadata)
+    except Exception as exc:
+        return jsonify({"error": f"Failed to upload photo: {exc}"}), 500
+
+    return jsonify({
+        "message": "Photo captured",
+        "driveFileId": metadata.get('id') if metadata else None,
+        "driveWebViewLink": metadata.get('webViewLink') if metadata else None,
+    })
+
+
+@app.route('/api/chat', methods=['POST'])
 def chat_with_pdf():
     data = request.get_json(silent=True) or {}
     question = data.get('question', '').strip()
