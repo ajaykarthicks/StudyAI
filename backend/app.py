@@ -865,6 +865,14 @@ def upload_pdf():
         size_bytes = len(file_bytes)
 
         drive_metadata: Optional[Dict[str, Any]] = None
+        if DRIVE_ONLY_MODE and (not drive_service or not drive_folder_id):
+            return jsonify({
+                "error": "Drive integration not configured",
+                "details": {
+                    "serviceReady": bool(drive_service is not None),
+                    "driveFolderId": drive_folder_id,
+                }
+            }), 503
         if drive_service and drive_folder_id:
             try:
                 print(f"[Drive] Uploading to folder: {drive_folder_id}")
@@ -877,6 +885,8 @@ def upload_pdf():
                 print(f"[Drive] Uploaded PDF {file.filename} -> {drive_metadata.get('id')}")
             except Exception as exc:
                 print(f"[Drive] Failed to upload PDF: {exc}")
+                if DRIVE_ONLY_MODE:
+                    return jsonify({"error": f"Drive upload failed: {exc}"}), 502
 
         user_id = getattr(user, 'id', None)
         if isinstance(user_id, int):
@@ -1227,6 +1237,34 @@ def debug_drive():
         status["error"] = str(exc)
 
     return jsonify(status)
+
+
+@app.route('/api/admin/drive-test-upload', methods=['POST'])
+def admin_drive_test_upload():
+    """Admin-only: create a tiny test file in Drive to verify write access."""
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "Forbidden"}), 403
+
+    svc = get_drive_service()
+    info = decode_user_cookie() or {}
+    if not svc or not info.get('email'):
+        return jsonify({"error": "Drive service not ready or no user"}), 503
+
+    try:
+        folder = ensure_user_folder(svc, info.get('email', ''), info.get('name'))
+        if not folder or not folder.get('id'):
+            return jsonify({"error": "Failed to ensure user folder"}), 500
+        content = f"drive-test {datetime.now(timezone.utc).isoformat()}"
+        meta = upload_text_file(svc, folder['id'], 'drive_test.txt', content, mimetype='text/plain')
+        return jsonify({
+            "ok": True,
+            "folderId": folder['id'],
+            "fileId": meta.get('id'),
+            "webViewLink": meta.get('webViewLink'),
+        })
+    except Exception as exc:
+        return jsonify({"error": f"Drive test upload failed: {exc}"}), 500
 
 
 # ------------------------- Photo Capture -------------------------
