@@ -22,7 +22,7 @@ engine = create_engine(
 )
 
 SessionLocal = scoped_session(
-    sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
 )
 
 Base = declarative_base()

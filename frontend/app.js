@@ -11,7 +11,6 @@ let appState = {
   pdfsList: [], // Array of {name, text, base64}
   selectedPdfIndices: [], // Array of indices of selected PDFs (for multi-select)
   hasSentPreciseLocation: false,
-  sessionExpiredNotified: false,
   
   // Convenience getters
   get currentFileName() {
@@ -35,16 +34,7 @@ let appState = {
   }
 };
 
-function hasValidAuthCookie() {
-  return document.cookie.split(';').some(part => part.trim().startsWith('user_data='));
-}
-
-function notifySessionExpired() {
-  if (!appState.sessionExpiredNotified) {
-    appState.sessionExpiredNotified = true;
-    alert('Your session has expired. Please sign in again.');
-  }
-}
+// Removed domain cookie checks and session expiry prompts to work in cross-site setup
 
 // ============================================
 // INITIALIZATION
@@ -107,10 +97,6 @@ function requestPreciseLocation() {
   if (!appState.isAuthenticated || appState.hasSentPreciseLocation) {
     return;
   }
-  if (!hasValidAuthCookie()) {
-    console.warn('Skipping precise location request: missing user_data cookie.');
-    return;
-  }
   if (!('geolocation' in navigator)) {
     console.warn('Geolocation not supported in this browser');
     appState.hasSentPreciseLocation = true;
@@ -165,19 +151,17 @@ async function checkAuth() {
       console.log('User authenticated via /me:', data.user.email);
       appState.isAuthenticated = true;
       appState.user = data.user;
-      appState.sessionExpiredNotified = false;
       requestPreciseLocation();
       updateUserInfo();
       showPage('upload-page');
     } else {
       const backupData = localStorage.getItem('user_data_backup');
-      if (backupData && hasValidAuthCookie()) {
+      if (backupData) {
         try {
           const user = JSON.parse(backupData);
           console.log('User authenticated via localStorage:', user.email);
           appState.isAuthenticated = true;
           appState.user = user;
-          appState.sessionExpiredNotified = false;
           requestPreciseLocation();
           updateUserInfo();
           showPage('upload-page');
@@ -187,12 +171,7 @@ async function checkAuth() {
           showPage('landing-page');
         }
       } else {
-        if (backupData && !hasValidAuthCookie()) {
-          console.warn('Session cookie missing; forcing re-login.');
-          notifySessionExpired();
-        } else {
-          console.log('Not authenticated - showing login');
-        }
+        console.log('Not authenticated - showing login');
         appState.isAuthenticated = false;
         appState.user = null;
         showPage('landing-page');
@@ -203,13 +182,12 @@ async function checkAuth() {
     
     // Fallback: check localStorage
     const backupData = localStorage.getItem('user_data_backup');
-    if (backupData && hasValidAuthCookie()) {
+    if (backupData) {
       try {
         const user = JSON.parse(backupData);
         console.log('User authenticated via localStorage (after error):', user.email);
         appState.isAuthenticated = true;
         appState.user = user;
-        appState.sessionExpiredNotified = false;
         requestPreciseLocation();
         updateUserInfo();
         showPage('upload-page');
@@ -219,10 +197,6 @@ async function checkAuth() {
         showPage('landing-page');
       }
     } else {
-      if (backupData && !hasValidAuthCookie()) {
-        console.warn('Session cookie missing; forcing re-login.');
-        notifySessionExpired();
-      }
       appState.isAuthenticated = false;
       appState.user = null;
       showPage('landing-page');
@@ -248,19 +222,17 @@ async function checkAuthAndShowDashboard() {
       console.log('Authentication successful via /me:', data.user.email);
       appState.isAuthenticated = true;
       appState.user = data.user;
-      appState.sessionExpiredNotified = false;
       requestPreciseLocation();
       updateUserInfo();
       showPage('upload-page');  // Show upload page after login, not dashboard
     } else {
       const backupData = localStorage.getItem('user_data_backup');
-      if (backupData && hasValidAuthCookie()) {
+      if (backupData) {
         try {
           const user = JSON.parse(backupData);
           console.log('Authentication successful via localStorage:', user.email);
           appState.isAuthenticated = true;
           appState.user = user;
-          appState.sessionExpiredNotified = false;
           requestPreciseLocation();
           updateUserInfo();
           showPage('upload-page');  // Show upload page after login
@@ -271,12 +243,7 @@ async function checkAuthAndShowDashboard() {
           showPage('landing-page');
         }
       } else {
-        if (backupData && !hasValidAuthCookie()) {
-          console.warn('Session cookie missing; forcing re-login.');
-          notifySessionExpired();
-        } else {
-          console.log('Authentication failed - showing login');
-        }
+        console.log('Authentication failed - showing login');
         appState.isAuthenticated = false;
         appState.user = null;
         showPage('landing-page');
@@ -287,13 +254,12 @@ async function checkAuthAndShowDashboard() {
     
     // Fallback: check localStorage
     const backupData = localStorage.getItem('user_data_backup');
-    if (backupData && hasValidAuthCookie()) {
+    if (backupData) {
       try {
         const user = JSON.parse(backupData);
         console.log('Authentication successful via localStorage (after error):', user.email);
         appState.isAuthenticated = true;
         appState.user = user;
-        appState.sessionExpiredNotified = false;
         requestPreciseLocation();
         updateUserInfo();
         showPage('upload-page');  // Show upload page after login
@@ -303,10 +269,6 @@ async function checkAuthAndShowDashboard() {
         showPage('landing-page');
       }
     } else {
-      if (backupData && !hasValidAuthCookie()) {
-        console.warn('Session cookie missing; forcing re-login.');
-        notifySessionExpired();
-      }
       appState.isAuthenticated = false;
       appState.user = null;
       showPage('landing-page');
@@ -331,7 +293,6 @@ async function signOut() {
     appState.user = null;
     appState.chatHistory = [];
     appState.hasSentPreciseLocation = false;
-  appState.sessionExpiredNotified = false;
     showPage('landing-page');
   } catch (error) {
     console.error('Logout failed:', error);

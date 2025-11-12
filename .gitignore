@@ -16,6 +16,12 @@ flask_session/
 .env
 .env.local
 .env.*.local
+backend/.env
+
+# SQLite database / instance data
+instance/
+*.db
+*.sqlite3
 
 # IDE settings
 .vscode/
@@ -31,6 +37,9 @@ Thumbs.db
 # Node modules (if using npm)
 node_modules/
 npm-debug.log
+
+# Logs
+*.log
 
 # OS specific
 .AppleDouble
