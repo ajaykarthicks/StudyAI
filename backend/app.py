@@ -211,6 +211,13 @@ def ensure_user_context(user_info: Dict[str, Any]):  # type: ignore[name-defined
     user_id = getattr(user, 'id', None)
     if folder_info and isinstance(user_id, int):
         update_user_drive_folder(user_id, folder_info)
+
+    if isinstance(user_id, int):
+        with db_session() as session:
+            refreshed = session.query(User).filter_by(id=user_id).first()
+            if refreshed:
+                session.expunge(refreshed)
+                return refreshed, drive_service, folder_info
     return user, drive_service, folder_info
 
 

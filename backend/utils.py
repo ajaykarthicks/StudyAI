@@ -129,11 +129,11 @@ def update_precise_location(user_id: int, precise_location: Dict[str, Any]) -> N
 
 
 def record_pdf_upload(user: User, filename: str, drive_meta: Dict[str, Any], sha_hash: Optional[str], size_bytes: int) -> PdfUpload:
-    user_id = getattr(user, "id", None)
-    if not isinstance(user_id, int):
-        raise ValueError("User does not have a valid id")
-
     with db_session() as session:
+        user_id = getattr(user, "id", None)
+        if not isinstance(user_id, int):
+            raise ValueError("User does not have a valid id")
+
         db_user = session.query(User).filter_by(id=user_id).first()
         if not db_user:
             raise ValueError("User not found when recording PDF upload")
