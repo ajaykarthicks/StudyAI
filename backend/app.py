@@ -51,7 +51,17 @@ from utils import (
     update_user_drive_folder,
 )
 
-load_dotenv(override=True)
+# Load environment from both repo root and backend/.env explicitly
+try:
+    from pathlib import Path
+    # First load root .env if present
+    load_dotenv(override=True)
+    # Then load backend/.env to support running from repo root
+    backend_env = Path(__file__).parent / ".env"
+    if backend_env.exists():
+        load_dotenv(dotenv_path=str(backend_env), override=True)
+except Exception as _exc:
+    print(f"[Init] Warning: .env loading issue: {_exc}")
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
