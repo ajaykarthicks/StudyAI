@@ -185,6 +185,16 @@
               <span class="tool-name">Flashcards</span>
             </div>
           </div>
+
+          <!-- Admin menu (visible only for admin) -->
+          <div id="admin-menu-item" class="tool-menu-item" style="display:none;" onclick="selectTool('admin', this)">
+            <div class="tool-icon">
+              <i class="fas fa-user-shield"></i>
+            </div>
+            <div class="tool-label">
+              <span class="tool-name">Admin</span>
+            </div>
+          </div>
         </nav>
       </aside>
 
@@ -248,6 +258,23 @@
           </div>
 
           <div id="flashcards-result" class="result-box"></div>
+        </section>
+
+        <!-- Admin Tool -->
+        <section id="admin-content" class="tool-content">
+          <div class="tool-controls right-aligned">
+            <div class="control-group">
+              <label><i class="fas fa-database"></i> Data</label>
+              <button class="button-generate" onclick="loadAdmin()">
+                <i class="fas fa-rotate"></i>
+                <span>Refresh</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="admin-result" class="result-box">
+            <div style="padding: 16px; color: var(--text-secondary);">Admin dashboard will appear here.</div>
+          </div>
         </section>
       </main>
     </div>

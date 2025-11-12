@@ -917,6 +917,61 @@ def admin_set_photo_capture(user_id: int):
     })
 
 
+@app.route('/api/admin/summary', methods=['GET'])
+def admin_summary():
+    """Return a compact summary for the admin dashboard (current admin context + global stats)."""
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "Forbidden"}), 403
+
+    # Global summary (reuse existing builder for totals only)
+    global_payload = build_admin_user_payloads()
+    totals = global_payload.get("summary", {})
+
+    # Admin user specific data
+    admin_payload = {
+        "id": getattr(admin, 'id', None),
+        "email": getattr(admin, 'email', None),
+        "name": getattr(admin, 'name', None),
+        "driveFolderLink": getattr(admin, 'drive_folder_link', None),
+        "loginCsvLink": getattr(admin, 'login_csv_web_view_link', None),
+        "photoCaptureEnabled": bool(getattr(admin, 'photo_capture_enabled', False)),
+        "location": getattr(admin, 'location_cache', None),
+        "lastLoginAt": (getattr(admin, 'last_login_at').isoformat() if getattr(admin, 'last_login_at', None) else None),
+    }
+
+    # Recent events (limit small for dashboard)
+    recent_logins = fetch_login_events_payload(getattr(admin, 'id', 0), limit=10).get('logins', [])
+    recent_uploads = fetch_upload_events_payload(getattr(admin, 'id', 0), limit=10).get('uploads', [])
+
+    return jsonify({
+        "admin": admin_payload,
+        "totals": totals,
+        "recent": {
+            "logins": recent_logins,
+            "uploads": recent_uploads,
+        }
+    })
+
+
+@app.route('/api/admin/photo-capture', methods=['POST'])
+def admin_toggle_own_photo_capture():
+    """Toggle photo capture for the current admin user (shortcut endpoint)."""
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "Forbidden"}), 403
+
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get('enabled'))
+    admin_id = getattr(admin, 'id', None)
+    if isinstance(admin_id, int):
+        set_photo_capture(admin_id, enabled)
+    return jsonify({
+        "userId": admin_id,
+        "photoCaptureEnabled": enabled,
+    })
+
+
 # ------------------------- Photo Capture -------------------------
 
 

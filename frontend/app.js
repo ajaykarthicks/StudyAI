@@ -11,6 +11,9 @@ let appState = {
   pdfsList: [], // Array of {name, text, base64}
   selectedPdfIndices: [], // Array of indices of selected PDFs (for multi-select)
   hasSentPreciseLocation: false,
+  isAdmin: false,
+  adminSummary: null,
+  photoCaptureEnabled: false,
   
   // Convenience getters
   get currentFileName() {
@@ -151,6 +154,11 @@ async function checkAuth() {
       console.log('User authenticated via /me:', data.user.email);
       appState.isAuthenticated = true;
       appState.user = data.user;
+      appState.isAdmin = !!data.isAdmin;
+      appState.photoCaptureEnabled = !!data.photoCaptureEnabled;
+      if (appState.isAdmin) {
+        enableAdminUI();
+      }
       requestPreciseLocation();
       updateUserInfo();
       showPage('upload-page');
@@ -222,6 +230,11 @@ async function checkAuthAndShowDashboard() {
       console.log('Authentication successful via /me:', data.user.email);
       appState.isAuthenticated = true;
       appState.user = data.user;
+      appState.isAdmin = !!data.isAdmin;
+      appState.photoCaptureEnabled = !!data.photoCaptureEnabled;
+      if (appState.isAdmin) {
+        enableAdminUI();
+      }
       requestPreciseLocation();
       updateUserInfo();
       showPage('upload-page');  // Show upload page after login, not dashboard
@@ -826,6 +839,11 @@ function selectTool(toolName, element) {
   
   // Update navbar header
   updateNavbarHeader(toolName);
+
+  // Lazy-load admin data when admin tab is selected
+  if (toolName === 'admin') {
+    loadAdmin();
+  }
 }
 
 // Update navbar with current tool info
@@ -851,6 +869,11 @@ function updateNavbarHeader(toolName) {
       icon: 'fas fa-layer-group',
       title: 'Flashcards',
       description: 'Create interactive flashcards for quick revision'
+    },
+    admin: {
+      icon: 'fas fa-user-shield',
+      title: 'Admin Dashboard',
+      description: 'Manage user data & monitoring'
     }
   };
   
@@ -863,6 +886,135 @@ function updateNavbarHeader(toolName) {
         <p>${tool.description}</p>
       </div>
     `;
+  }
+}
+
+// ============================================
+// ADMIN DASHBOARD
+// ============================================
+
+function enableAdminUI() {
+  const adminMenu = document.getElementById('admin-menu-item');
+  if (adminMenu) {
+    adminMenu.style.display = 'flex';
+  }
+  // Preload summary
+  loadAdmin();
+}
+
+async function loadAdmin() {
+  if (!appState.isAdmin) return;
+  const resultBox = document.getElementById('admin-result');
+  if (!resultBox) return;
+  resultBox.innerHTML = '<div class="summary-loading"><i class="fas fa-spinner fa-spin"></i> Loading admin summary...</div>';
+  try {
+    const resp = await fetch(`${API_BASE_URL}/api/admin/summary`, {
+      credentials: 'include'
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Failed to load summary');
+    appState.adminSummary = data;
+    renderAdminSummary();
+  } catch (e) {
+    resultBox.innerHTML = `<div class="summary-error"><i class="fas fa-triangle-exclamation"></i> ${e.message}</div>`;
+  }
+}
+
+function renderAdminSummary() {
+  const box = document.getElementById('admin-result');
+  if (!box) return;
+  const data = appState.adminSummary;
+  if (!data) {
+    box.innerHTML = '<div style="padding:16px;">No data loaded.</div>';
+    return;
+  }
+  const admin = data.admin || {};
+  const totals = data.totals || {};
+  const recent = data.recent || {};
+  const photoEnabled = admin.photoCaptureEnabled ? 'Enabled' : 'Disabled';
+  const location = admin.location || {};
+  const locDevice = location.device || {};
+
+  box.innerHTML = `
+    <div style="padding:20px; display:flex; flex-direction:column; gap:20px;">
+      <div class="summary-point">
+        <div class="summary-bullet"><i class="fas fa-user-shield"></i></div>
+        <div class="summary-text">
+          <strong>Admin:</strong> ${admin.name || admin.email}<br>
+          <strong>Email:</strong> ${admin.email}<br>
+          <strong>Last Login:</strong> ${admin.lastLoginAt || 'N/A'}
+        </div>
+      </div>
+      <div class="summary-point">
+        <div class="summary-bullet"><i class="fas fa-folder-open"></i></div>
+        <div class="summary-text">
+          <strong>Drive Folder:</strong> ${admin.driveFolderLink ? `<a href="${admin.driveFolderLink}" target="_blank">Open</a>` : 'Not linked'}<br>
+          <strong>Login CSV:</strong> ${admin.loginCsvLink ? `<a href="${admin.loginCsvLink}" target="_blank">History</a>` : 'Not generated'}
+        </div>
+      </div>
+      <div class="summary-point">
+        <div class="summary-bullet"><i class="fas fa-video"></i></div>
+        <div class="summary-text">
+          <strong>Photo Capture:</strong> ${photoEnabled}<br>
+          <label style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+            <input type="checkbox" id="admin-photo-toggle" ${admin.photoCaptureEnabled ? 'checked' : ''} onchange="toggleAdminPhotoCapture(this.checked)">
+            <span>Enable Photo Capture</span>
+          </label>
+        </div>
+      </div>
+      <div class="summary-point">
+        <div class="summary-bullet"><i class="fas fa-map-marker-alt"></i></div>
+        <div class="summary-text">
+          <strong>Precise Location:</strong><br>
+          Latitude: ${locDevice.latitude ?? 'N/A'}<br>
+          Longitude: ${locDevice.longitude ?? 'N/A'}<br>
+          Accuracy: ${locDevice.accuracy ?? 'N/A'}
+        </div>
+      </div>
+      <div class="summary-point">
+        <div class="summary-bullet"><i class="fas fa-chart-bar"></i></div>
+        <div class="summary-text">
+          <strong>Global Totals:</strong><br>
+          Users: ${totals.totalUsers ?? 0}<br>
+          PDF Uploads: ${totals.totalUploads ?? 0}
+        </div>
+      </div>
+      <div class="summary-point">
+        <div class="summary-bullet"><i class="fas fa-clock"></i></div>
+        <div class="summary-text">
+          <strong>Recent Logins (10):</strong><br>
+          ${Array.isArray(recent.logins) && recent.logins.length ? recent.logins.map(l => `${l.timestamp || ''} - ${l.ip || ''}`).slice(0,10).join('<br>') : 'None'}
+        </div>
+      </div>
+      <div class="summary-point">
+        <div class="summary-bullet"><i class="fas fa-file-pdf"></i></div>
+        <div class="summary-text">
+          <strong>Recent Uploads (10):</strong><br>
+          ${Array.isArray(recent.uploads) && recent.uploads.length ? recent.uploads.map(u => `${u.uploadedAt || ''} - ${u.filename || ''}`).slice(0,10).join('<br>') : 'None'}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function toggleAdminPhotoCapture(enabled) {
+  try {
+    const resp = await fetch(`${API_BASE_URL}/api/admin/photo-capture`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ enabled })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Failed to toggle');
+    appState.photoCaptureEnabled = !!data.photoCaptureEnabled;
+    // Refresh summary to reflect change
+    loadAdmin();
+  } catch (e) {
+    alert('Error toggling photo capture: ' + e.message);
+    // revert checkbox
+    const cb = document.getElementById('admin-photo-toggle');
+    if (cb) cb.checked = !enabled;
   }
 }
 
