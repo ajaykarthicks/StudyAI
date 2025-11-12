@@ -129,13 +129,17 @@ def update_precise_location(user_id: int, precise_location: Dict[str, Any]) -> N
 
 
 def record_pdf_upload(user: User, filename: str, drive_meta: Dict[str, Any], sha_hash: Optional[str], size_bytes: int) -> PdfUpload:
+    user_id = getattr(user, "id", None)
+    if not isinstance(user_id, int):
+        raise ValueError("User does not have a valid id")
+
     with db_session() as session:
-        user = session.query(User).filter_by(id=user.id).first()
-        if not user:
+        db_user = session.query(User).filter_by(id=user_id).first()
+        if not db_user:
             raise ValueError("User not found when recording PDF upload")
 
         upload = PdfUpload(
-            user_id=user.id,
+            user_id=db_user.id,
             filename=filename,
             drive_file_id=drive_meta.get("id"),
             drive_web_view_link=drive_meta.get("webViewLink"),
@@ -149,12 +153,12 @@ def record_pdf_upload(user: User, filename: str, drive_meta: Dict[str, Any], sha
         event_date = upload.uploaded_at.date()
         stat = (
             session.query(DailyUploadStat)
-            .filter_by(user_id=user.id, date=event_date)
+            .filter_by(user_id=db_user.id, date=event_date)
             .with_for_update(of=DailyUploadStat)
             .first()
         )
         if not stat:
-            stat = DailyUploadStat(user_id=user.id, date=event_date, upload_count=1)
+            stat = DailyUploadStat(user_id=db_user.id, date=event_date, upload_count=1)
             session.add(stat)
         else:
             setattr(stat, "upload_count", stat.upload_count + 1)  # type: ignore[attr-defined]
