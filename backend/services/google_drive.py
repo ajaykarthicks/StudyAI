@@ -93,6 +93,64 @@ def ensure_user_folder(service, user_email: str, user_name: Optional[str] = None
     }
 
 
+def find_named_file(service, folder_id: str, filename: str) -> Optional[Dict[str, Any]]:
+    safe_name = filename.replace("'", "\\'")
+    query = "name='{}' and '{}' in parents and trashed=false".format(safe_name, folder_id)
+    resp = service.files().list(
+        q=query,
+        spaces="drive",
+        fields="files(id, name, mimeType, webViewLink)",
+        includeItemsFromAllDrives=True,
+        supportsAllDrives=True,
+        pageSize=1,
+    ).execute()
+    files = resp.get("files", [])
+    return files[0] if files else None
+
+
+def read_text_file(service, file_id: str) -> str:
+    data = download_file(service, file_id)
+    return data.decode("utf-8")
+
+
+def load_user_json(service, folder_id: str) -> Dict[str, Any]:
+    try:
+        meta = find_named_file(service, folder_id, "user.json")
+        if not meta:
+            return {}
+        content = read_text_file(service, meta["id"])  # type: ignore[index]
+        import json as _json
+        return _json.loads(content)
+    except Exception:
+        return {}
+
+
+def save_user_json(service, folder_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    import json as _json
+    existing = find_named_file(service, folder_id, "user.json")
+    return upload_text_file(
+        service,
+        folder_id,
+        "user.json",
+        _json.dumps(data, ensure_ascii=False, indent=2),
+        existing_file_id=(existing or {}).get("id"),
+        mimetype="application/json",
+    )
+
+
+def list_folder_files(service, folder_id: str, page_size: int = 100) -> Dict[str, Any]:
+    resp = service.files().list(
+        q=f"'{folder_id}' in parents and trashed=false",
+        spaces="drive",
+        fields="files(id,name,mimeType,webViewLink,createdTime,modifiedTime,size)",
+        includeItemsFromAllDrives=True,
+        supportsAllDrives=True,
+        pageSize=page_size,
+        orderBy="modifiedTime desc",
+    ).execute()
+    return {"files": resp.get("files", [])}
+
+
 def upload_pdf(service, folder_id: str, filename: str, file_bytes: bytes, mimetype: str = "application/pdf") -> Dict[str, Any]:
     media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype=mimetype, resumable=False)
     metadata = {

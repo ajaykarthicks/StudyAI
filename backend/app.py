@@ -1,4 +1,5 @@
 import os
+from types import SimpleNamespace
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow HTTPS and HTTP
 
 import base64
@@ -28,6 +29,9 @@ from services.google_drive import (
     get_drive_service,
     upload_pdf as drive_upload_pdf,
     upload_text_file,
+    load_user_json,
+    save_user_json,
+    list_folder_files,
 )
 from services.location import lookup_location
 from utils import (
@@ -78,6 +82,9 @@ print(f"[Session] Enabled for PDF storage only - auth uses COOKIES")
 Session(app)
 
 ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', 'ajaykarthick1207@gmail.com')
+DRIVE_ONLY_MODE = os.getenv('DRIVE_ONLY_MODE', 'false').lower() == 'true'
+if DRIVE_ONLY_MODE:
+    print('[Mode] DRIVE_ONLY_MODE enabled: operating without persistent DB for some endpoints')
 
 # Initialize database schema on startup
 init_db()
@@ -374,6 +381,22 @@ def handle_post_login(user_info: Dict[str, Any]) -> None:
 
 
 def require_admin() -> Optional[User]:
+    if DRIVE_ONLY_MODE:
+        info = decode_user_cookie()
+        if not info:
+            return None
+        email = info.get('email')
+        if email != ADMIN_EMAIL:
+            return None
+        pseudo = SimpleNamespace(
+            email=email,
+            name=info.get('name') or info.get('given_name') or '',
+            id=None,
+            drive_folder_link=None,
+            login_csv_web_view_link=None,
+            photo_capture_enabled=False,
+        )
+        return pseudo  # type: ignore
     user = ensure_current_user()
     if not user:
         return None
@@ -506,40 +529,50 @@ def debug_config():
 
 @app.route('/me')
 def me():
-    print(f"[DEBUG] /me called - verifying cookies and DB record")
-
+    print(f"[DEBUG] /me called - verifying cookies and mode")
     user_info = decode_user_cookie()
     if not user_info:
-        print(f"[DEBUG] No user_data cookie found ❌")
         return jsonify({"authenticated": False}), 401
-
-    response_payload: Dict[str, Any] = {
-        "authenticated": True,
-        "user": user_info,
-    }
-
+    if DRIVE_ONLY_MODE:
+        drive_service = get_drive_service()
+        folder_meta = None
+        drive_state = {}
+        if drive_service:
+            try:
+                folder_meta = ensure_user_folder(drive_service, user_info.get('email', ''), user_info.get('name'))
+                if folder_meta and folder_meta.get('id'):
+                    drive_state = load_user_json(drive_service, folder_meta['id']) or {}
+            except Exception as exc:
+                print(f"[Drive] /me drive-only ensure folder failed: {exc}")
+        is_admin = user_info.get('email') == ADMIN_EMAIL
+        return jsonify({
+            "authenticated": True,
+            "user": user_info,
+            "isAdmin": is_admin,
+            "photoCaptureEnabled": bool(drive_state.get('photo_capture_enabled', False)),
+            "dbUser": None,
+            "driveFolderLink": folder_meta.get('link') if folder_meta else None,
+            "loginCsvLink": None,
+        })
+    # Normal DB-backed mode
+    response_payload: Dict[str, Any] = {"authenticated": True, "user": user_info}
     user_record = ensure_current_user()
     if user_record:
         user_id = getattr(user_record, 'id', None)
         email = getattr(user_record, 'email', None)
-        response_payload.update(
-            {
-                "dbUser": {
-                    "id": user_id,
-                    "email": email,
-                    "name": getattr(user_record, 'name', None),
-                    "driveFolderLink": getattr(user_record, 'drive_folder_link', None),
-                    "loginCsvLink": getattr(user_record, 'login_csv_web_view_link', None),
-                },
-                "photoCaptureEnabled": bool(getattr(user_record, 'photo_capture_enabled', False)),
-                "isAdmin": bool(isinstance(email, str) and email == ADMIN_EMAIL),
-            }
-        )
+        response_payload.update({
+            "dbUser": {
+                "id": user_id,
+                "email": email,
+                "name": getattr(user_record, 'name', None),
+                "driveFolderLink": getattr(user_record, 'drive_folder_link', None),
+                "loginCsvLink": getattr(user_record, 'login_csv_web_view_link', None),
+            },
+            "photoCaptureEnabled": bool(getattr(user_record, 'photo_capture_enabled', False)),
+            "isAdmin": bool(isinstance(email, str) and email == ADMIN_EMAIL),
+        })
     else:
-        response_payload["isAdmin"] = False
-
-    print(f"[DEBUG] User from cookie: {user_info.get('email')} ✅")
-    print(f"[DEBUG] isAdmin={response_payload.get('isAdmin')}")
+        response_payload['isAdmin'] = False
     return jsonify(response_payload), 200
 
 @app.route('/auth/google')
@@ -965,57 +998,104 @@ def admin_set_photo_capture(user_id: int):
 
 @app.route('/api/admin/summary', methods=['GET'])
 def admin_summary():
-    """Return a compact summary for the admin dashboard (current admin context + global stats)."""
     admin = require_admin()
     if not admin:
         return jsonify({"error": "Forbidden"}), 403
+    if DRIVE_ONLY_MODE:
+        info = decode_user_cookie() or {}
+        drive_service = get_drive_service()
+        uploads = []
+        folder_link = None
+        photo_enabled = False
+        if drive_service and info.get('email'):
+            try:
+                folder_meta = ensure_user_folder(drive_service, info.get('email', ''), info.get('name'))
+                if folder_meta and folder_meta.get('id'):
+                    folder_link = folder_meta.get('link')
+                    state = load_user_json(drive_service, folder_meta['id']) or {}
+                    photo_enabled = bool(state.get('photo_capture_enabled', False))
+                    listing = list_folder_files(drive_service, folder_meta['id'], page_size=100).get('files', [])
+                    for f in listing:
+                        name = f.get('name', '')
+                        if name in ('user.json', 'login_history.csv'):
+                            continue
+                        if f.get('mimeType') == 'application/vnd.google-apps.folder':
+                            continue
+                        uploads.append({
+                            'filename': name,
+                            'modifiedTime': f.get('modifiedTime'),
+                            'driveFileId': f.get('id'),
+                            'webViewLink': f.get('webViewLink'),
+                        })
+            except Exception as exc:
+                print(f"[Drive] drive-only summary error: {exc}")
 
-    # Global summary (reuse existing builder for totals only)
+        return jsonify({
+            'mode': 'drive-only',
+            'admin': {
+                'email': info.get('email'),
+                'name': info.get('name'),
+                'driveFolderLink': folder_link,
+                'photoCaptureEnabled': photo_enabled,
+            },
+            'totals': {
+                'totalUsers': 1,
+                'totalUploads': len(uploads),
+            },
+            'recent': {
+                'logins': [],
+                'uploads': uploads[:10],
+            }
+        })
+    # Normal DB-backed summary
     global_payload = build_admin_user_payloads()
-    totals = global_payload.get("summary", {})
-
-    # Admin user specific data
-    admin_payload = {
-        "id": getattr(admin, 'id', None),
-        "email": getattr(admin, 'email', None),
-        "name": getattr(admin, 'name', None),
-        "driveFolderLink": getattr(admin, 'drive_folder_link', None),
-        "loginCsvLink": getattr(admin, 'login_csv_web_view_link', None),
-        "photoCaptureEnabled": bool(getattr(admin, 'photo_capture_enabled', False)),
-        "location": getattr(admin, 'location_cache', None),
-        "lastLoginAt": (getattr(admin, 'last_login_at').isoformat() if getattr(admin, 'last_login_at', None) else None),
-    }
-
-    # Recent events (limit small for dashboard)
+    totals = global_payload.get('summary', {})
     recent_logins = fetch_login_events_payload(getattr(admin, 'id', 0), limit=10).get('logins', [])
     recent_uploads = fetch_upload_events_payload(getattr(admin, 'id', 0), limit=10).get('uploads', [])
-
     return jsonify({
-        "admin": admin_payload,
-        "totals": totals,
-        "recent": {
-            "logins": recent_logins,
-            "uploads": recent_uploads,
+        'mode': 'db',
+        'admin': {
+            'id': getattr(admin, 'id', None),
+            'email': getattr(admin, 'email', None),
+            'name': getattr(admin, 'name', None),
+            'driveFolderLink': getattr(admin, 'drive_folder_link', None),
+            'loginCsvLink': getattr(admin, 'login_csv_web_view_link', None),
+            'photoCaptureEnabled': bool(getattr(admin, 'photo_capture_enabled', False)),
+            'location': getattr(admin, 'location_cache', None),
+            'lastLoginAt': (getattr(admin, 'last_login_at').isoformat() if getattr(admin, 'last_login_at', None) else None),
+        },
+        'totals': totals,
+        'recent': {
+            'logins': recent_logins,
+            'uploads': recent_uploads,
         }
     })
 
-
 @app.route('/api/admin/photo-capture', methods=['POST'])
 def admin_toggle_own_photo_capture():
-    """Toggle photo capture for the current admin user (shortcut endpoint)."""
     admin = require_admin()
     if not admin:
         return jsonify({"error": "Forbidden"}), 403
-
     data = request.get_json(silent=True) or {}
     enabled = bool(data.get('enabled'))
+    if DRIVE_ONLY_MODE:
+        info = decode_user_cookie() or {}
+        drive_service = get_drive_service()
+        if drive_service and info.get('email'):
+            try:
+                folder_meta = ensure_user_folder(drive_service, info.get('email', ''), info.get('name'))
+                if folder_meta and folder_meta.get('id'):
+                    state = load_user_json(drive_service, folder_meta['id']) or {}
+                    state['photo_capture_enabled'] = enabled
+                    save_user_json(drive_service, folder_meta['id'], state)
+                return jsonify({'photoCaptureEnabled': enabled})
+            except Exception as exc:
+                return jsonify({'error': f'Drive update failed: {exc}'}), 500
+        return jsonify({'error': 'Drive not available'}), 503
     admin_id = getattr(admin, 'id', None)
     if isinstance(admin_id, int):
         set_photo_capture(admin_id, enabled)
-    return jsonify({
-        "userId": admin_id,
-        "photoCaptureEnabled": enabled,
-    })
+    return jsonify({'userId': admin_id, 'photoCaptureEnabled': enabled})
 
 
 @app.route('/debug/drive', methods=['GET'])
