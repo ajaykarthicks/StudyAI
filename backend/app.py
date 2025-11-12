@@ -86,8 +86,11 @@ DRIVE_ONLY_MODE = os.getenv('DRIVE_ONLY_MODE', 'false').lower() == 'true'
 if DRIVE_ONLY_MODE:
     print('[Mode] DRIVE_ONLY_MODE enabled: operating without persistent DB for some endpoints')
 
-# Initialize database schema on startup
-init_db()
+# Initialize database schema on startup (skip in drive-only mode)
+if os.getenv('DRIVE_ONLY_MODE', 'false').lower() == 'true':
+    print('[Mode] DRIVE_ONLY_MODE=true -> Skipping init_db (no DB)')
+else:
+    init_db()
 
 # Google OAuth Configuration
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
@@ -207,13 +210,35 @@ def extract_location_for_csv(location: Optional[Dict[str, Any]]) -> Dict[str, st
 
 def ensure_user_context(user_info: Dict[str, Any]):  # type: ignore[name-defined]
     drive_service = get_drive_service()
-    folder_info = None
+    folder_info: Optional[Dict[str, Any]] = None
     if drive_service:
         try:
-            folder_info = ensure_user_folder(drive_service, user_info['email'], user_info.get('name'))
+            folder_info = ensure_user_folder(drive_service, user_info.get('email', ''), user_info.get('name'))
         except Exception as exc:
             print(f"[Drive] Failed to ensure user folder: {exc}")
             folder_info = None
+
+    # Drive-only mode: return a pseudo user based on cookie + Drive state
+    if DRIVE_ONLY_MODE:
+        from types import SimpleNamespace
+        pseudo = SimpleNamespace()
+        pseudo.id = None
+        pseudo.email = user_info.get('email')
+        pseudo.name = user_info.get('name') or user_info.get('given_name')
+        pseudo.drive_folder_id = folder_info.get('id') if isinstance(folder_info, dict) else None
+        pseudo.drive_folder_link = folder_info.get('link') if isinstance(folder_info, dict) else None
+        pseudo.login_csv_web_view_link = None
+        pseudo.photo_capture_enabled = False
+        # Hydrate photo toggle from Drive user.json if present
+        try:
+            if drive_service and pseudo.drive_folder_id:
+                state = load_user_json(drive_service, pseudo.drive_folder_id) or {}
+                pseudo.photo_capture_enabled = bool(state.get('photo_capture_enabled', False))
+        except Exception as exc:
+            print(f"[Drive] load user.json failed: {exc}")
+        return pseudo, drive_service, folder_info
+
+    # DB-backed mode
     user = get_or_create_user(user_info, folder_info)
     user_id = getattr(user, 'id', None)
     if folder_info and isinstance(user_id, int):
@@ -223,7 +248,6 @@ def ensure_user_context(user_info: Dict[str, Any]):  # type: ignore[name-defined
         with db_session() as session:
             refreshed = session.query(User).filter_by(id=user_id).first()
             if refreshed:
-                # Load relationships before expunging to avoid lazy loads later
                 _ = getattr(refreshed, 'drive_folder_id', None)
                 _ = getattr(refreshed, 'photo_capture_enabled', None)
                 _ = getattr(refreshed, 'login_csv_file_id', None)
@@ -317,10 +341,13 @@ def append_login_csv_if_possible(user: User, drive_service, location: Optional[D
             output.getvalue(),
             existing_file_id=login_csv_file_id,
         )
-        user_id = getattr(user, 'id', None)
-        file_id = metadata.get('id') if metadata else None
-        if isinstance(user_id, int) and isinstance(file_id, str):
-            update_login_csv_metadata(user_id, file_id, metadata.get('webViewLink'))
+        if DRIVE_ONLY_MODE:
+            pass  # No DB to update
+        else:
+            user_id = getattr(user, 'id', None)
+            file_id = metadata.get('id') if metadata else None
+            if isinstance(user_id, int) and isinstance(file_id, str):
+                update_login_csv_metadata(user_id, file_id, metadata.get('webViewLink'))
     except Exception as exc:
         print(f"[Drive] Failed to upload login CSV: {exc}")
 
@@ -376,8 +403,20 @@ def handle_post_login(user_info: Dict[str, Any]) -> None:
     user_agent = request.headers.get('User-Agent')
     ip_location = lookup_location(ip_address)
     location_payload = build_login_location_payload(ip_location, ip_address)
-    record_login_event(user, ip_address, user_agent, location_payload)
+    if not DRIVE_ONLY_MODE:
+        record_login_event(user, ip_address, user_agent, location_payload)
     append_login_csv_if_possible(user, drive_service, location_payload, ip_address, user_agent)
+    # Persist last_login and last_location to Drive user.json in drive-only mode
+    if DRIVE_ONLY_MODE and drive_service:
+        try:
+            folder_id = getattr(user, 'drive_folder_id', None)
+            if folder_id:
+                state = load_user_json(drive_service, folder_id) or {}
+                state['last_login_at'] = datetime.now(timezone.utc).isoformat()
+                state['last_location'] = location_payload
+                save_user_json(drive_service, folder_id, state)
+        except Exception as exc:
+            print(f"[Drive] Failed to update user.json after login: {exc}")
 
 
 def require_admin() -> Optional[User]:
@@ -932,11 +971,24 @@ def report_precise_location():
     if isinstance(address, dict):
         precise_location['address'] = address
 
-    user_id = getattr(user, 'id', None)
-    if not isinstance(user_id, int):
-        return jsonify({"error": "User record is malformed"}), 500
-
-    update_precise_location(user_id, precise_location)
+    if DRIVE_ONLY_MODE:
+        drive_service = get_drive_service()
+        if drive_service:
+            try:
+                folder_id = getattr(user, 'drive_folder_id', None)
+                if folder_id:
+                    state = load_user_json(drive_service, folder_id) or {}
+                    state['last_location'] = {
+                        'device': precise_location
+                    }
+                    save_user_json(drive_service, folder_id, state)
+            except Exception as exc:
+                print(f"[Drive] Failed to save precise location: {exc}")
+    else:
+        user_id = getattr(user, 'id', None)
+        if not isinstance(user_id, int):
+            return jsonify({"error": "User record is malformed"}), 500
+        update_precise_location(user_id, precise_location)
 
     return jsonify({
         "status": "location-updated",
@@ -952,7 +1004,30 @@ def admin_get_users():
     admin = require_admin()
     if not admin:
         return jsonify({"error": "Forbidden"}), 403
-
+    if DRIVE_ONLY_MODE:
+        info = decode_user_cookie() or {}
+        drive_service = get_drive_service()
+        folder_link = None
+        if drive_service and info.get('email'):
+            try:
+                folder_meta = ensure_user_folder(drive_service, info.get('email', ''), info.get('name'))
+                folder_link = folder_meta.get('link') if folder_meta else None
+            except Exception:
+                folder_link = None
+        return jsonify({
+            'mode': 'drive-only',
+            'users': [{
+                'id': None,
+                'email': info.get('email'),
+                'name': info.get('name'),
+                'driveFolderLink': folder_link,
+                'photoCaptureEnabled': False,
+            }],
+            'summary': {
+                'totalUsers': 1,
+                'totalUploads': None,
+            }
+        })
     payload = build_admin_user_payloads()
     return jsonify(payload)
 
@@ -962,7 +1037,8 @@ def admin_get_user_logins(user_id: int):
     admin = require_admin()
     if not admin:
         return jsonify({"error": "Forbidden"}), 403
-
+    if DRIVE_ONLY_MODE:
+        return jsonify({'mode': 'drive-only', 'logins': [], 'count': 0})
     limit_param = request.args.get('limit', type=int) or 50
     limit = max(1, min(limit_param, 250))
     payload = fetch_login_events_payload(user_id, limit)
@@ -974,7 +1050,30 @@ def admin_get_user_uploads(user_id: int):
     admin = require_admin()
     if not admin:
         return jsonify({"error": "Forbidden"}), 403
-
+    if DRIVE_ONLY_MODE:
+        info = decode_user_cookie() or {}
+        drive_service = get_drive_service()
+        uploads = []
+        if drive_service and info.get('email'):
+            try:
+                folder_meta = ensure_user_folder(drive_service, info.get('email', ''), info.get('name'))
+                if folder_meta and folder_meta.get('id'):
+                    listing = list_folder_files(drive_service, folder_meta['id'], page_size=200).get('files', [])
+                    for f in listing:
+                        name = f.get('name', '')
+                        if name in ('user.json', 'login_history.csv'):
+                            continue
+                        if f.get('mimeType') == 'application/vnd.google-apps.folder':
+                            continue
+                        uploads.append({
+                            'filename': name,
+                            'modifiedTime': f.get('modifiedTime'),
+                            'driveFileId': f.get('id'),
+                            'webViewLink': f.get('webViewLink'),
+                        })
+            except Exception:
+                pass
+        return jsonify({'mode': 'drive-only', 'uploads': uploads, 'count': len(uploads)})
     limit_param = request.args.get('limit', type=int) or 50
     limit = max(1, min(limit_param, 250))
     payload = fetch_upload_events_payload(user_id, limit)
