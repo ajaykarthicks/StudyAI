@@ -1,6 +1,7 @@
 import os
 from contextlib import contextmanager
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import scoped_session, sessionmaker, declarative_base
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///instance/studyai.db")
@@ -33,7 +34,12 @@ def init_db() -> None:
     if DATABASE_URL.startswith("sqlite"):
         _run_sqlite_migrations()
 
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except OperationalError as exc:
+        message = str(exc).lower()
+        if "already exists" not in message:
+            raise
 
 
 def _run_sqlite_migrations() -> None:
