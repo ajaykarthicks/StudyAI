@@ -1239,7 +1239,7 @@ def debug_drive():
     return jsonify(status)
 
 
-@app.route('/api/admin/drive-test-upload', methods=['POST'])
+@app.route('/api/admin/drive-test-upload', methods=['POST', 'GET'])
 def admin_drive_test_upload():
     """Admin-only: create a tiny test file in Drive to verify write access."""
     admin = require_admin()
