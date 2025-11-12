@@ -216,6 +216,10 @@ def ensure_user_context(user_info: Dict[str, Any]):  # type: ignore[name-defined
         with db_session() as session:
             refreshed = session.query(User).filter_by(id=user_id).first()
             if refreshed:
+                # Load relationships before expunging to avoid lazy loads later
+                _ = getattr(refreshed, 'drive_folder_id', None)
+                _ = getattr(refreshed, 'photo_capture_enabled', None)
+                _ = getattr(refreshed, 'login_csv_file_id', None)
                 session.expunge(refreshed)
                 return refreshed, drive_service, folder_info
     return user, drive_service, folder_info
@@ -224,6 +228,16 @@ def ensure_user_context(user_info: Dict[str, Any]):  # type: ignore[name-defined
 def ensure_current_user() -> Optional[User]:
     user = get_authenticated_user()
     if user:
+        user_id = getattr(user, 'id', None)
+        if isinstance(user_id, int):
+            with db_session() as session:
+                refreshed = session.query(User).filter_by(id=user_id).first()
+                if refreshed:
+                    _ = getattr(refreshed, 'drive_folder_id', None)
+                    _ = getattr(refreshed, 'photo_capture_enabled', None)
+                    _ = getattr(refreshed, 'login_csv_file_id', None)
+                    session.expunge(refreshed)
+                    return refreshed
         return user
     user_info = decode_user_cookie()
     if not user_info:
