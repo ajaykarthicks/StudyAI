@@ -52,21 +52,28 @@ def ensure_user_folder(service, user_email: str, user_name: Optional[str] = None
     if not root_folder_id:
         return None
 
+    # Preferred naming: "<Name> (<email>)"; legacy: "<email>"
+    preferred_name_raw = f"{user_name} ({user_email})" if user_name else user_email
+    preferred_name = preferred_name_raw.replace("'", "\\'")
+    legacy_name = user_email.replace("'", "\\'")
+
     query = (
         "mimeType='application/vnd.google-apps.folder' and trashed=false "
-        f"and name='{user_email}' and '{root_folder_id}' in parents"
+        f"and (name='{preferred_name}' or name='{legacy_name}') and '{root_folder_id}' in parents"
     )
     response = service.files().list(q=query, spaces="drive", fields="files(id, name, webViewLink)").execute()
     files = response.get("files", [])
     if files:
-        folder = files[0]
+        # Prefer the correctly named folder if both exist
+        preferred = next((f for f in files if f.get("name") == preferred_name_raw), None)
+        folder = preferred or files[0]
         return {
             "id": folder["id"],
             "link": folder.get("webViewLink"),
         }
 
     metadata = {
-        "name": user_email,
+        "name": preferred_name_raw,
         "mimeType": "application/vnd.google-apps.folder",
         "parents": [root_folder_id],
     }

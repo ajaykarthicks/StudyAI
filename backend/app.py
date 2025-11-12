@@ -318,6 +318,51 @@ def append_login_csv_if_possible(user: User, drive_service, location: Optional[D
         print(f"[Drive] Failed to upload login CSV: {exc}")
 
 
+@app.route('/api/admin/repair-login-csv', methods=['POST'])
+def admin_repair_login_csv():
+    """Admin-only: force creation (or update) of the login CSV even if no recent login event."""
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "Forbidden"}), 403
+
+    drive_service = get_drive_service()
+    if not drive_service:
+        return jsonify({"error": "Drive service unavailable"}), 503
+
+    drive_folder_id = getattr(admin, 'drive_folder_id', None)
+    if not drive_folder_id:
+        # Try to ensure folder now
+        folder = ensure_user_folder(drive_service, getattr(admin, 'email', ''), getattr(admin, 'name', None))
+        if folder and folder.get('id'):
+            drive_folder_id = folder['id']
+            update_user_drive_folder(getattr(admin, 'id', 0), folder)
+    if not drive_folder_id:
+        return jsonify({"error": "Drive folder not set"}), 400
+
+    # Build a minimal header-only CSV if none exists
+    existing_id = getattr(admin, 'login_csv_file_id', None)
+    csv_content = 'timestamp,ip,city,region,country,latitude,longitude,timezone,user_agent\n'
+    try:
+        metadata = upload_text_file(
+            drive_service,
+            drive_folder_id,
+            getattr(admin, 'login_csv_file_name', 'login_history.csv'),
+            csv_content,
+            existing_file_id=existing_id,
+        )
+        admin_id = getattr(admin, 'id', None)
+        file_id = metadata.get('id') if metadata else None
+        if isinstance(admin_id, int) and isinstance(file_id, str):
+            update_login_csv_metadata(admin_id, file_id, metadata.get('webViewLink'))
+        return jsonify({
+            "message": "Login CSV repaired",
+            "fileId": file_id,
+            "webViewLink": metadata.get('webViewLink') if metadata else None,
+        })
+    except Exception as exc:
+        return jsonify({"error": f"Failed to repair CSV: {exc}"}), 500
+
+
 def handle_post_login(user_info: Dict[str, Any]) -> None:
     user, drive_service, _ = ensure_user_context(user_info)
     ip_address = get_client_ip()
