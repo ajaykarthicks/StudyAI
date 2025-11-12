@@ -49,8 +49,14 @@ def get_drive_service():
 
 def ensure_user_folder(service, user_email: str, user_name: Optional[str] = None) -> Optional[Dict[str, str]]:
     root_folder_id = (os.getenv("GOOGLE_DRIVE_ROOT_FOLDER_ID") or "").strip()
+    drive_user_mode = (os.getenv("DRIVE_USER_MODE", "false").lower() == "true")
+    shared_drive_id = (os.getenv("GOOGLE_DRIVE_SHARED_DRIVE_ID") or "").strip()
     if not root_folder_id:
-        return None
+        # In user OAuth mode, default to the user's My Drive root
+        if drive_user_mode:
+            root_folder_id = 'root'
+        else:
+            return None
 
     # Preferred naming: "<Name> (<email>)"; legacy: "<email>"
     preferred_name_raw = f"{user_name} ({user_email})" if user_name else user_email
@@ -61,13 +67,20 @@ def ensure_user_folder(service, user_email: str, user_name: Optional[str] = None
         "mimeType='application/vnd.google-apps.folder' and trashed=false "
         f"and (name='{preferred_name}' or name='{legacy_name}') and '{root_folder_id}' in parents"
     )
-    response = service.files().list(
+    list_kwargs: Dict[str, Any] = dict(
         q=query,
         spaces="drive",
         fields="files(id, name, webViewLink)",
         includeItemsFromAllDrives=True,
         supportsAllDrives=True,
-    ).execute()
+    )
+    # When using a shared drive, specify corpora/driveId for more consistent results
+    if shared_drive_id:
+        list_kwargs["driveId"] = shared_drive_id
+        list_kwargs["corpora"] = "drive"
+        list_kwargs["includeItemsFromAllDrives"] = True
+        list_kwargs["supportsAllDrives"] = True
+    response = service.files().list(**list_kwargs).execute()
     files = response.get("files", [])
     if files:
         # Prefer the correctly named folder if both exist
@@ -94,16 +107,21 @@ def ensure_user_folder(service, user_email: str, user_name: Optional[str] = None
 
 
 def find_named_file(service, folder_id: str, filename: str) -> Optional[Dict[str, Any]]:
+    shared_drive_id = (os.getenv("GOOGLE_DRIVE_SHARED_DRIVE_ID") or "").strip()
     safe_name = filename.replace("'", "\\'")
     query = "name='{}' and '{}' in parents and trashed=false".format(safe_name, folder_id)
-    resp = service.files().list(
+    list_kwargs: Dict[str, Any] = dict(
         q=query,
         spaces="drive",
         fields="files(id, name, mimeType, webViewLink)",
         includeItemsFromAllDrives=True,
         supportsAllDrives=True,
         pageSize=1,
-    ).execute()
+    )
+    if shared_drive_id:
+        list_kwargs["driveId"] = shared_drive_id
+        list_kwargs["corpora"] = "drive"
+    resp = service.files().list(**list_kwargs).execute()
     files = resp.get("files", [])
     return files[0] if files else None
 
@@ -139,7 +157,8 @@ def save_user_json(service, folder_id: str, data: Dict[str, Any]) -> Optional[Di
 
 
 def list_folder_files(service, folder_id: str, page_size: int = 100) -> Dict[str, Any]:
-    resp = service.files().list(
+    shared_drive_id = (os.getenv("GOOGLE_DRIVE_SHARED_DRIVE_ID") or "").strip()
+    list_kwargs: Dict[str, Any] = dict(
         q=f"'{folder_id}' in parents and trashed=false",
         spaces="drive",
         fields="files(id,name,mimeType,webViewLink,createdTime,modifiedTime,size)",
@@ -147,7 +166,11 @@ def list_folder_files(service, folder_id: str, page_size: int = 100) -> Dict[str
         supportsAllDrives=True,
         pageSize=page_size,
         orderBy="modifiedTime desc",
-    ).execute()
+    )
+    if shared_drive_id:
+        list_kwargs["driveId"] = shared_drive_id
+        list_kwargs["corpora"] = "drive"
+    resp = service.files().list(**list_kwargs).execute()
     return {"files": resp.get("files", [])}
 
 

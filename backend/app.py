@@ -20,6 +20,9 @@ import PyPDF2
 import requests
 from groq import Groq
 from sqlalchemy import func
+from google.oauth2.credentials import Credentials as GoogleUserCredentials  # type: ignore[import-not-found]
+from google.auth.transport.requests import Request as GoogleAuthRequest  # type: ignore[import-not-found]
+from googleapiclient.discovery import build as gdrive_build  # type: ignore[import-not-found]
 
 from db import init_db, db_session
 from models import DailyUploadStat, LoginEvent, PdfUpload, User
@@ -85,6 +88,9 @@ ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', 'ajaykarthick1207@gmail.com')
 DRIVE_ONLY_MODE = os.getenv('DRIVE_ONLY_MODE', 'false').lower() == 'true'
 if DRIVE_ONLY_MODE:
     print('[Mode] DRIVE_ONLY_MODE enabled: operating without persistent DB for some endpoints')
+DRIVE_USER_MODE = os.getenv('DRIVE_USER_MODE', 'false').lower() == 'true'
+if DRIVE_USER_MODE:
+    print('[Mode] DRIVE_USER_MODE enabled: using user OAuth for Drive uploads')
 
 # Initialize database schema on startup (skip in drive-only mode)
 if os.getenv('DRIVE_ONLY_MODE', 'false').lower() == 'true':
@@ -146,6 +152,39 @@ SCOPES = [
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile'
 ]
+if DRIVE_USER_MODE:
+    SCOPES.append('https://www.googleapis.com/auth/drive')
+
+
+def get_user_drive_service():
+    if not DRIVE_USER_MODE:
+        return None
+    creds_dict = session.get('google_creds') or None
+    if not creds_dict:
+        return None
+    try:
+        creds = GoogleUserCredentials(
+            token=creds_dict.get('token'),
+            refresh_token=creds_dict.get('refresh_token'),
+            token_uri=creds_dict.get('token_uri'),
+            client_id=creds_dict.get('client_id'),
+            client_secret=creds_dict.get('client_secret'),
+            scopes=creds_dict.get('scopes'),
+        )
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(GoogleAuthRequest())
+            session['google_creds'] = {
+                'token': creds.token,
+                'refresh_token': creds.refresh_token,
+                'token_uri': creds.token_uri,
+                'client_id': creds.client_id,
+                'client_secret': creds.client_secret,
+                'scopes': creds.scopes,
+            }
+        return gdrive_build('drive', 'v3', credentials=creds, cache_discovery=False)
+    except Exception as exc:
+        print(f"[Drive] Failed to build user drive service: {exc}")
+        return None
 
 
 def get_client_ip() -> Optional[str]:
@@ -209,7 +248,11 @@ def extract_location_for_csv(location: Optional[Dict[str, Any]]) -> Dict[str, st
 
 
 def ensure_user_context(user_info: Dict[str, Any]):  # type: ignore[name-defined]
-    drive_service = get_drive_service()
+    drive_service = None
+    if DRIVE_USER_MODE:
+        drive_service = get_user_drive_service()
+    if not drive_service:
+        drive_service = get_drive_service()
     folder_info: Optional[Dict[str, Any]] = None
     if drive_service:
         try:
@@ -755,6 +798,21 @@ def google_callback():
         except Exception as exc:
             print(f"[CALLBACK] Failed to process login metadata: {exc}")
 
+        # Store user Drive OAuth credentials in session when DRIVE_USER_MODE
+        if DRIVE_USER_MODE and credentials:
+            try:
+                session['google_creds'] = {
+                    'token': credentials.token,
+                    'refresh_token': credentials.refresh_token,
+                    'token_uri': getattr(credentials, 'token_uri', 'https://oauth2.googleapis.com/token'),
+                    'client_id': credentials.client_id,
+                    'client_secret': credentials.client_secret,
+                    'scopes': credentials.scopes,
+                }
+                print('[CALLBACK] Stored user OAuth Drive credentials in session')
+            except Exception as exc:
+                print(f"[CALLBACK] Failed to store user creds: {exc}")
+
         # Store user info in ONLY the cookie (no session)
         user_json = json.dumps(user_info)
         user_b64 = base64.b64encode(user_json.encode()).decode()
@@ -1218,7 +1276,11 @@ def debug_drive():
 
     import os
     root_id = os.getenv('GOOGLE_DRIVE_ROOT_FOLDER_ID') or ''
-    svc = get_drive_service()
+    svc = None
+    if DRIVE_USER_MODE:
+        svc = get_user_drive_service()
+    if not svc:
+        svc = get_drive_service()
 
     status = {
         "serviceReady": bool(svc is not None),
@@ -1229,7 +1291,7 @@ def debug_drive():
     }
 
     try:
-        if svc and root_id:
+        if svc:
             # Try ensuring the admin's folder (non-destructive)
             folder = ensure_user_folder(svc, getattr(admin, 'email', 'unknown'), getattr(admin, 'name', None))
             status["ensureUserFolder"] = folder or None
