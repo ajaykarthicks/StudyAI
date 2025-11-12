@@ -972,6 +972,38 @@ def admin_toggle_own_photo_capture():
     })
 
 
+@app.route('/debug/drive', methods=['GET'])
+def debug_drive():
+    """Admin-only: check Drive configuration and folder accessibility for current user.
+    Does not expose secrets; returns booleans and minimal metadata.
+    """
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "Forbidden"}), 403
+
+    import os
+    root_id = os.getenv('GOOGLE_DRIVE_ROOT_FOLDER_ID') or ''
+    svc = get_drive_service()
+
+    status = {
+        "serviceReady": bool(svc is not None),
+        "rootFolderIdSet": bool(root_id.strip() != ''),
+        "rootFolderId": root_id if root_id else None,
+        "ensureUserFolder": None,
+        "error": None,
+    }
+
+    try:
+        if svc and root_id:
+            # Try ensuring the admin's folder (non-destructive)
+            folder = ensure_user_folder(svc, getattr(admin, 'email', 'unknown'), getattr(admin, 'name', None))
+            status["ensureUserFolder"] = folder or None
+    except Exception as exc:
+        status["error"] = str(exc)
+
+    return jsonify(status)
+
+
 # ------------------------- Photo Capture -------------------------
 
 
