@@ -1267,6 +1267,39 @@ def admin_drive_test_upload():
         return jsonify({"error": f"Drive test upload failed: {exc}"}), 500
 
 
+@app.route('/api/admin/drive-list', methods=['GET'])
+def admin_drive_list():
+    """Admin-only: list files in the current user's Drive folder."""
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "Forbidden"}), 403
+
+    svc = get_drive_service()
+    info = decode_user_cookie() or {}
+    if not svc or not info.get('email'):
+        return jsonify({"error": "Drive service not ready or no user"}), 503
+
+    try:
+        folder = ensure_user_folder(svc, info.get('email', ''), info.get('name'))
+        if not folder or not folder.get('id'):
+            return jsonify({"error": "Failed to ensure user folder"}), 500
+        listing = list_folder_files(svc, folder['id'], page_size=200).get('files', [])
+        # Filter out state files
+        visible = []
+        for f in listing:
+            name = f.get('name', '')
+            if name in ('user.json', 'login_history.csv'):
+                continue
+            visible.append(f)
+        return jsonify({
+            "folderId": folder['id'],
+            "count": len(visible),
+            "files": visible,
+        })
+    except Exception as exc:
+        return jsonify({"error": f"Drive list failed: {exc}"}), 500
+
+
 # ------------------------- Photo Capture -------------------------
 
 
