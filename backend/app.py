@@ -795,6 +795,7 @@ def upload_pdf():
         drive_metadata: Optional[Dict[str, Any]] = None
         if drive_service and drive_folder_id:
             try:
+                print(f"[Drive] Uploading to folder: {drive_folder_id}")
                 drive_metadata = drive_upload_pdf(
                     drive_service,
                     drive_folder_id,

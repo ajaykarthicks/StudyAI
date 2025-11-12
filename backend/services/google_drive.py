@@ -61,7 +61,13 @@ def ensure_user_folder(service, user_email: str, user_name: Optional[str] = None
         "mimeType='application/vnd.google-apps.folder' and trashed=false "
         f"and (name='{preferred_name}' or name='{legacy_name}') and '{root_folder_id}' in parents"
     )
-    response = service.files().list(q=query, spaces="drive", fields="files(id, name, webViewLink)").execute()
+    response = service.files().list(
+        q=query,
+        spaces="drive",
+        fields="files(id, name, webViewLink)",
+        includeItemsFromAllDrives=True,
+        supportsAllDrives=True,
+    ).execute()
     files = response.get("files", [])
     if files:
         # Prefer the correctly named folder if both exist
@@ -80,7 +86,7 @@ def ensure_user_folder(service, user_email: str, user_name: Optional[str] = None
     if user_name:
         metadata["description"] = f"StudyAI uploads for {user_name}"
 
-    folder = service.files().create(body=metadata, fields="id, webViewLink").execute()
+    folder = service.files().create(body=metadata, fields="id, webViewLink", supportsAllDrives=True).execute()
     return {
         "id": folder["id"],
         "link": folder.get("webViewLink"),
@@ -88,7 +94,7 @@ def ensure_user_folder(service, user_email: str, user_name: Optional[str] = None
 
 
 def upload_pdf(service, folder_id: str, filename: str, file_bytes: bytes, mimetype: str = "application/pdf") -> Dict[str, Any]:
-    media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype=mimetype, resumable=True)
+    media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype=mimetype, resumable=False)
     metadata = {
         "name": filename,
         "parents": [folder_id],
@@ -96,14 +102,14 @@ def upload_pdf(service, folder_id: str, filename: str, file_bytes: bytes, mimety
     }
     file = (
         service.files()
-        .create(body=metadata, media_body=media, fields="id, name, webViewLink, webContentLink")
+        .create(body=metadata, media_body=media, fields="id, name, webViewLink, webContentLink", supportsAllDrives=True)
         .execute()
     )
     return file
 
 
 def download_file(service, file_id: str) -> bytes:
-    request = service.files().get_media(fileId=file_id)
+    request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
     fh = io.BytesIO()
     downloader = MediaIoBaseDownload(fh, request)
     done = False
@@ -134,13 +140,14 @@ def upload_text_file(
                 media_body=media,
                 body={"name": filename},
                 fields="id, name, webViewLink, webContentLink",
+                supportsAllDrives=True,
             )
             .execute()
         )
     else:
         file = (
             service.files()
-            .create(body=metadata, media_body=media, fields="id, name, webViewLink, webContentLink")
+            .create(body=metadata, media_body=media, fields="id, name, webViewLink, webContentLink", supportsAllDrives=True)
             .execute()
         )
     return file
