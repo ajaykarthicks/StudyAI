@@ -78,7 +78,13 @@ FRONTEND_URL_FOR_CORS = os.getenv('FRONTEND_URL', 'https://studyai-gamma.vercel.
 # IMPORTANT: Must specify actual origin, not *, when using credentials=True
 CORS(app, 
      supports_credentials=True,
-     origins=[FRONTEND_URL_FOR_CORS],  # Specific origin (not * when using cookies)
+     origins=[
+         FRONTEND_URL_FOR_CORS,
+         "http://localhost:3000",
+         "http://localhost:5500",
+         "http://127.0.0.1:5500",
+         "http://127.0.0.1:3000"
+     ],
      methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
      allow_headers=["Content-Type", "Authorization"],
      expose_headers=["Content-Type", "Set-Cookie"],
@@ -118,7 +124,7 @@ print("="*50)
 # Database setup
 if not DRIVE_ONLY_MODE:
     try:
-        init_db(app)
+        init_db()
     except Exception as e:
         print(f"[ERROR] Failed to initialize database: {e}")
         raise
@@ -134,9 +140,12 @@ if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
     print(f"[WARNING] OAuth will not work - set these env vars on Railway")
 
 # Production - use Railway public domain, fallback to env var
-RAILWAY_PUBLIC_DOMAIN = os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_DOMAIN') or 'studyai-production.up.railway.app'
+if os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_DOMAIN'):
+    RAILWAY_PUBLIC_DOMAIN = os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_DOMAIN')
+    BACKEND_URL = f"https://{RAILWAY_PUBLIC_DOMAIN}"
+else:
+    BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:5000')
 
-BACKEND_URL = f"https://{RAILWAY_PUBLIC_DOMAIN}"
 GOOGLE_REDIRECT_URI = f"{BACKEND_URL}/auth/google/callback"
 
 print(f"\n[Init] ========================================")
