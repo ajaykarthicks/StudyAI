@@ -66,6 +66,11 @@ except Exception as _exc:
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
 
+# Configuration
+DRIVE_ONLY_MODE = os.getenv('DRIVE_ONLY_MODE', 'false').lower() == 'true'
+DRIVE_USER_MODE = os.getenv('DRIVE_USER_MODE', 'false').lower() == 'true'
+ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
+
 # Get frontend URL for CORS
 FRONTEND_URL_FOR_CORS = os.getenv('FRONTEND_URL', 'https://studyai-gamma.vercel.app')
 
@@ -91,22 +96,32 @@ app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600
+app.config["SESSION_FILE_DIR"] = os.path.join(os.path.dirname(__file__), "flask_session")
 print(f"[Session] Enabled for PDF storage only - auth uses COOKIES")
 Session(app)
 
-ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', 'ajaykarthick1207@gmail.com')
-DRIVE_ONLY_MODE = os.getenv('DRIVE_ONLY_MODE', 'false').lower() == 'true'
+# Startup Configuration Log
+print("="*50)
+print(f"Starting Application")
+print(f"DRIVE_ONLY_MODE: {DRIVE_ONLY_MODE}")
+print(f"DRIVE_USER_MODE: {DRIVE_USER_MODE}")
 if DRIVE_ONLY_MODE:
-    print('[Mode] DRIVE_ONLY_MODE enabled: operating without persistent DB for some endpoints')
-DRIVE_USER_MODE = os.getenv('DRIVE_USER_MODE', 'false').lower() == 'true'
-if DRIVE_USER_MODE:
-    print('[Mode] DRIVE_USER_MODE enabled: using user OAuth for Drive uploads')
-
-# Initialize database schema on startup (skip in drive-only mode)
-if os.getenv('DRIVE_ONLY_MODE', 'false').lower() == 'true':
-    print('[Mode] DRIVE_ONLY_MODE=true -> Skipping init_db (no DB)')
+    print("Database: DISABLED (Using Drive for storage)")
+    if DRIVE_USER_MODE:
+        print("Storage: User's Personal Drive (OAuth)")
+    else:
+        print("Storage: Service Account")
 else:
-    init_db()
+    print("Database: ENABLED")
+print("="*50)
+
+# Database setup
+if not DRIVE_ONLY_MODE:
+    try:
+        init_db(app)
+    except Exception as e:
+        print(f"[ERROR] Failed to initialize database: {e}")
+        raise
 
 # Google OAuth Configuration
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')

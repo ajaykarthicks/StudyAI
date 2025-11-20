@@ -80,7 +80,24 @@ def ensure_user_folder(service, user_email: str, user_name: Optional[str] = None
         list_kwargs["corpora"] = "drive"
         list_kwargs["includeItemsFromAllDrives"] = True
         list_kwargs["supportsAllDrives"] = True
-    response = service.files().list(**list_kwargs).execute()
+    
+    try:
+        response = service.files().list(**list_kwargs).execute()
+    except HttpError as e:
+        # If the root folder is not found (404) and we are in user mode, fallback to 'root'
+        if e.resp.status == 404 and drive_user_mode and root_folder_id != 'root':
+            print(f"[Drive] Root folder {root_folder_id} not found/accessible. Falling back to 'root' (My Drive).")
+            root_folder_id = 'root'
+            # Re-build query with 'root'
+            query = (
+                "mimeType='application/vnd.google-apps.folder' and trashed=false "
+                f"and (name='{preferred_name}' or name='{legacy_name}') and 'root' in parents"
+            )
+            list_kwargs['q'] = query
+            response = service.files().list(**list_kwargs).execute()
+        else:
+            raise e
+
     files = response.get("files", [])
     if files:
         # Prefer the correctly named folder if both exist
