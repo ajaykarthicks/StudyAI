@@ -96,15 +96,24 @@ DRIVE_ONLY_MODE = os.getenv('DRIVE_ONLY_MODE', 'false').lower() == 'true'
 DRIVE_USER_MODE = os.getenv('DRIVE_USER_MODE', 'false').lower() == 'true'
 ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
 
+# Detect environment
+IS_PRODUCTION = os.getenv('RENDER') == 'true' or os.getenv('RAILWAY_PUBLIC_DOMAIN') is not None
+
 # Get frontend URL for CORS
-FRONTEND_URL_FOR_CORS = os.getenv('FRONTEND_URL', 'https://studyai-ajay.vercel.app')
+# Default to the user's Vercel URL
+DEFAULT_FRONTEND_URL = "https://studyai-ajay.vercel.app"
+FRONTEND_URL = os.getenv('FRONTEND_URL', DEFAULT_FRONTEND_URL)
+
+# Normalize URL (remove trailing slash for consistency)
+if FRONTEND_URL.endswith('/'):
+    FRONTEND_URL = FRONTEND_URL[:-1]
 
 # Enable CORS for frontend with cookies
 # IMPORTANT: Must specify actual origin, not *, when using credentials=True
 CORS(app, 
      supports_credentials=True,
      origins=[
-         FRONTEND_URL_FOR_CORS,
+         FRONTEND_URL,
          "https://studyai-ajay.vercel.app",
          "http://localhost:3000",
          "http://localhost:5500",
@@ -117,16 +126,26 @@ CORS(app,
      max_age=3600
 )
 
-print(f"[CORS] Allowed origin: {FRONTEND_URL_FOR_CORS}")
+print(f"[CORS] Allowed origins: {FRONTEND_URL}, https://studyai-ajay.vercel.app")
 print(f"[CORS] supports_credentials=True (cookies enabled)")
 
 # Use server-side session ONLY for PDF storage (not auth)
 # Auth uses cookies only
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_PERMANENT'] = False
-app.config['SESSION_COOKIE_SECURE'] = False
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+# Cookie Security Configuration
+if IS_PRODUCTION:
+    print("[Config] Production mode detected: Enabling Secure/None cookies")
+    app.config['SESSION_COOKIE_SECURE'] = True
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+else:
+    print("[Config] Development mode: Using Lax cookies")
+    app.config['SESSION_COOKIE_SECURE'] = False
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600
 app.config["SESSION_FILE_DIR"] = os.path.join(os.path.dirname(__file__), "flask_session")
 print(f"[Session] Enabled for PDF storage only - auth uses COOKIES")
@@ -158,7 +177,7 @@ if not DRIVE_ONLY_MODE:
 # Google OAuth Configuration
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://studyai-gamma.vercel.app')
+# FRONTEND_URL is defined at the top of the file
 
 # Detect environment
 if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
