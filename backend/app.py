@@ -1606,9 +1606,9 @@ def google_callback():
         response = redirect(frontend_url)
         
         # Determine cookie security based on environment
-        is_production = bool(os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_DOMAIN'))
-        cookie_secure = is_production
-        cookie_samesite = 'None' if is_production else 'Lax'
+        # Use the global IS_PRODUCTION flag defined at the top of the file
+        cookie_secure = IS_PRODUCTION
+        cookie_samesite = 'None' if IS_PRODUCTION else 'Lax'
         
         # Set user_data cookie - THIS IS THE ONLY PLACE USER DATA IS STORED
         response.set_cookie(
