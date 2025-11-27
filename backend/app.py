@@ -97,7 +97,7 @@ DRIVE_USER_MODE = os.getenv('DRIVE_USER_MODE', 'false').lower() == 'true'
 ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
 
 # Get frontend URL for CORS
-FRONTEND_URL_FOR_CORS = os.getenv('FRONTEND_URL', 'https://studyai-gamma.vercel.app')
+FRONTEND_URL_FOR_CORS = os.getenv('FRONTEND_URL', 'https://studyai-ajay.vercel.app')
 
 # Enable CORS for frontend with cookies
 # IMPORTANT: Must specify actual origin, not *, when using credentials=True
@@ -105,6 +105,7 @@ CORS(app,
      supports_credentials=True,
      origins=[
          FRONTEND_URL_FOR_CORS,
+         "https://studyai-ajay.vercel.app",
          "http://localhost:3000",
          "http://localhost:5500",
          "http://127.0.0.1:5500",
