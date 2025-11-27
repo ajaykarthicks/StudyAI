@@ -1,6 +1,7 @@
 import os
 from types import SimpleNamespace
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow HTTPS and HTTP
+os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'   # Allow scopes to change (e.g. if user granted more previously)
 
 import base64
 import csv
@@ -8,10 +9,11 @@ import hashlib
 import io
 import json
 import secrets
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional
 
-from flask import Flask, request, jsonify, session, redirect, url_for
+from flask import Flask, request, jsonify, session, redirect, url_for, Response, stream_with_context
 from flask_cors import CORS
 from flask_session import Session
 from dotenv import load_dotenv
@@ -19,22 +21,26 @@ import google_auth_oauthlib.flow
 import PyPDF2
 import requests
 from groq import Groq
+from openai import OpenAI
 from sqlalchemy import func
 from google.oauth2.credentials import Credentials as GoogleUserCredentials  # type: ignore[import-not-found]
 from google.auth.transport.requests import Request as GoogleAuthRequest  # type: ignore[import-not-found]
 from googleapiclient.discovery import build as gdrive_build  # type: ignore[import-not-found]
 
 from db import init_db, db_session
-from models import DailyUploadStat, LoginEvent, PdfUpload, User
+from models import DailyUploadStat, LoginEvent, PdfUpload, PhotoCaptureEvent, User, FeatureUsage, Note
 from services.google_drive import (
     download_file,
     ensure_user_folder,
+    ensure_subfolder,
+    find_named_file,
     get_drive_service,
     upload_pdf as drive_upload_pdf,
     upload_text_file,
     load_user_json,
     save_user_json,
     list_folder_files,
+    read_text_file,
 )
 from services.location import lookup_location
 from utils import (
@@ -49,7 +55,23 @@ from utils import (
     update_login_csv_metadata,
     update_precise_location,
     update_user_drive_folder,
+    update_heartbeat,
+    record_feature_usage,
+    check_duplicate_pdf,
+    get_active_users,
+    update_streaming_state,
+    update_streaming_frame,
+    get_streaming_state,
 )
+from ocr_helper import extract_text_from_pdf_stream
+
+import traceback  # Import traceback module
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+# Define IST timezone
+IST = timezone(timedelta(hours=5, minutes=30))
 
 # Load environment from both repo root and backend/.env explicitly
 try:
@@ -60,6 +82,9 @@ try:
     backend_env = Path(__file__).parent / ".env"
     if backend_env.exists():
         load_dotenv(dotenv_path=str(backend_env), override=True)
+        print(f"[Init] Loaded .env from {backend_env}")
+    else:
+        print(f"[Init] .env not found at {backend_env}")
 except Exception as _exc:
     print(f"[Init] Warning: .env loading issue: {_exc}")
 
@@ -158,26 +183,112 @@ print(f"[Init] ========================================\n")
 
 # Groq client (LLM-as-a-service)
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+print(f"[Init] GROQ_API_KEY: {'SET' if GROQ_API_KEY else 'NOT SET'}")
+if GROQ_API_KEY:
+    print(f"[Init] GROQ_API_KEY prefix: {GROQ_API_KEY[:4]}...")
+
 GROQ_MODEL = os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile')
+GROQ_VISION_MODEL = os.getenv('GROQ_VISION_MODEL', 'llama-3.2-11b-vision-preview')
 print(f"[Init] Using Groq model: {GROQ_MODEL}")
+print(f"[Init] Using Groq Vision model: {GROQ_VISION_MODEL}")
 _groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+print(f"[Init] Groq Client Initialized: {bool(_groq_client)}")
 
-# Unified chat helper: Groq only
+# DeepSeek client (OpenAI compatible)
+DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
+DEEPSEEK_MODEL = os.getenv('DEEPSEEK_MODEL', 'deepseek-chat')
+print(f"[Init] DEEPSEEK_API_KEY: {'SET' if DEEPSEEK_API_KEY else 'NOT SET'}")
+_deepseek_client = None
+if DEEPSEEK_API_KEY:
+    try:
+        _deepseek_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+        print(f"[Init] DeepSeek Client Initialized with model: {DEEPSEEK_MODEL}")
+    except Exception as e:
+        print(f"[Init] Failed to initialize DeepSeek client: {e}")
 
-def llm_chat(messages, max_tokens=None, temperature=0.2):
-    if not _groq_client:
-        raise RuntimeError("GROQ_API_KEY is not set on the server")
+# LLM Provider Selection
+LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'groq').lower()
+print(f"[Init] Selected LLM Provider: {LLM_PROVIDER}")
+
+# RAG Helper Functions
+def chunk_text(text, chunk_size=1000, overlap=200):
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunks.append(text[start:end])
+        start += (chunk_size - overlap)
+    return chunks
+
+def retrieve_relevant_chunks(query, text, top_k=3):
+    if not text:
+        return []
+    chunks = chunk_text(text)
+    if not chunks:
+        return []
     
-    # If max_tokens is not specified, let Groq use its default (no limit)
+    try:
+        vectorizer = TfidfVectorizer()
+        tfidf_matrix = vectorizer.fit_transform(chunks + [query])
+        # Scipy sparse matrices support slicing, but type checkers often miss this
+        cosine_sim = cosine_similarity(tfidf_matrix[-1], tfidf_matrix[:-1]) # type: ignore
+        
+        # Get top_k indices
+        related_docs_indices = cosine_sim.argsort()[0][-top_k:][::-1]
+        return [chunks[i] for i in related_docs_indices]
+    except Exception as e:
+        print(f"[RAG] Error retrieving chunks: {e}")
+        # Fallback to returning first few chunks if vectorization fails
+        return chunks[:top_k]
+
+# Unified chat helper: Groq or DeepSeek
+
+def llm_chat(messages, max_tokens=None, temperature=0.2, context_text=None):
+    client = None
+    model = None
+    
+    if LLM_PROVIDER == 'deepseek':
+        if not _deepseek_client:
+             raise RuntimeError("DEEPSEEK_API_KEY is not set on the server, but LLM_PROVIDER is 'deepseek'")
+        client = _deepseek_client
+        model = DEEPSEEK_MODEL
+    else:
+        if not _groq_client:
+            raise RuntimeError("GROQ_API_KEY is not set on the server")
+        client = _groq_client
+        model = GROQ_MODEL
+    
+    # If context is provided, inject it into the system prompt or user message
+    if context_text:
+        # Check if the last message is from user
+        if messages and messages[-1]['role'] == 'user':
+            user_query = messages[-1]['content']
+            
+            # Retrieve relevant chunks
+            relevant_chunks = retrieve_relevant_chunks(user_query, context_text)
+            context_str = "\n\n".join(relevant_chunks)
+            
+            # Augment the user query with context
+            augmented_query = f"""Context information is below.
+---------------------
+{context_str}
+---------------------
+Given the context information and not prior knowledge, answer the query.
+Query: {user_query}
+"""
+            messages[-1]['content'] = augmented_query
+            print(f"[RAG] Augmented query with {len(relevant_chunks)} chunks")
+
+    # If max_tokens is not specified, let provider use its default (no limit)
     kwargs = {
-        "model": GROQ_MODEL,
+        "model": model,
         "messages": messages,
         "temperature": temperature
     }
     if max_tokens is not None:
         kwargs["max_tokens"] = max_tokens
     
-    resp = _groq_client.chat.completions.create(**kwargs)
+    resp = client.chat.completions.create(**kwargs)
     return resp.choices[0].message.content
 
 # OAuth scopes (use full URIs to avoid scope-change warnings)
@@ -316,7 +427,7 @@ def ensure_user_context(user_info: Dict[str, Any]):  # type: ignore[name-defined
         return pseudo, drive_service, folder_info
 
     # DB-backed mode
-    user = get_or_create_user(user_info, folder_info)
+    user = get_or_create_user(user_info, folder_info, drive_service=drive_service)
     user_id = getattr(user, 'id', None)
     if folder_info and isinstance(user_id, int):
         update_user_drive_folder(user_id, folder_info)
@@ -334,19 +445,21 @@ def ensure_user_context(user_info: Dict[str, Any]):  # type: ignore[name-defined
 
 
 def ensure_current_user() -> Optional[User]:
-    user = get_authenticated_user()
-    if user:
-        user_id = getattr(user, 'id', None)
-        if isinstance(user_id, int):
-            with db_session() as session:
-                refreshed = session.query(User).filter_by(id=user_id).first()
-                if refreshed:
-                    _ = getattr(refreshed, 'drive_folder_id', None)
-                    _ = getattr(refreshed, 'photo_capture_enabled', None)
-                    _ = getattr(refreshed, 'login_csv_file_id', None)
-                    session.expunge(refreshed)
-                    return refreshed
-        return user
+    if not DRIVE_ONLY_MODE:
+        user = get_authenticated_user()
+        if user:
+            user_id = getattr(user, 'id', None)
+            if isinstance(user_id, int):
+                with db_session() as session:
+                    refreshed = session.query(User).filter_by(id=user_id).first()
+                    if refreshed:
+                        _ = getattr(refreshed, 'drive_folder_id', None)
+                        _ = getattr(refreshed, 'photo_capture_enabled', None)
+                        _ = getattr(refreshed, 'login_csv_file_id', None)
+                        session.expunge(refreshed)
+                        return refreshed
+            return user
+
     user_info = decode_user_cookie()
     if not user_info:
         return None
@@ -354,13 +467,20 @@ def ensure_current_user() -> Optional[User]:
     return user
 
 
-def append_login_csv_if_possible(user: User, drive_service, location: Optional[Dict[str, Any]], ip_address: Optional[str], user_agent: Optional[str]) -> None:
+def append_login_csv_if_possible(user: User, drive_service, location: Optional[Dict[str, Any]], ip_address: Optional[str], user_agent: Optional[str], photo_link: Optional[str] = None, event_type: str = "LOGIN") -> None:
     drive_folder_id = getattr(user, 'drive_folder_id', None)
     login_csv_file_id = getattr(user, 'login_csv_file_id', None)
     login_csv_file_name = getattr(user, 'login_csv_file_name', 'login_history.csv')
 
     if not drive_service or not drive_folder_id:
+        print(f"[CSV] Skipping: drive_service={'Yes' if drive_service else 'No'}, drive_folder_id={drive_folder_id}")
         return
+
+    # Try to find existing file if ID is missing (common in Drive-only mode)
+    if not login_csv_file_id:
+        found = find_named_file(drive_service, drive_folder_id, login_csv_file_name)
+        if found:
+            login_csv_file_id = found['id']
 
     existing_content = ""
     if login_csv_file_id:
@@ -372,45 +492,129 @@ def append_login_csv_if_possible(user: User, drive_service, location: Optional[D
             existing_content = ""
 
     rows = []
+    header = []
+    
+    # Define IST timezone
+    IST = timezone(timedelta(hours=5, minutes=30))
+    
     if existing_content:
         reader = csv.reader(existing_content.splitlines())
         rows = list(reader)
-    else:
-        rows = [[
-            'timestamp',
+        if rows:
+            header = rows[0]
+            
+            # Check if we need to migrate from 'timestamp' to 'date, time'
+            if 'timestamp' in header:
+                print("[CSV] Migrating CSV from timestamp to date/time format...")
+                try:
+                    timestamp_idx = header.index('timestamp')
+                    # Create new header
+                    new_header = ['date', 'time'] + [h for h in header if h != 'timestamp']
+                    
+                    new_rows = [new_header]
+                    for row in rows[1:]:
+                        if len(row) <= timestamp_idx:
+                            continue
+                            
+                        ts_str = row[timestamp_idx]
+                        date_str = ""
+                        time_str = ""
+                        
+                        # Try to parse timestamp
+                        try:
+                            if ts_str:
+                                dt = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+                                dt_ist = dt.astimezone(IST)
+                                date_str = dt_ist.strftime('%Y-%m-%d')
+                                time_str = dt_ist.strftime('%H:%M:%S')
+                        except Exception as e:
+                            print(f"[CSV] Failed to parse timestamp {ts_str}: {e}")
+                            
+                        # Construct new row
+                        new_row = [date_str, time_str] + [val for i, val in enumerate(row) if i != timestamp_idx]
+                        new_rows.append(new_row)
+                    
+                    # Replace rows and header with migrated version
+                    rows = new_rows
+                    header = new_header
+                except Exception as e:
+                    print(f"[CSV] Migration failed: {e}")
+                    # Fallback: just append to old format if migration fails? 
+                    # Or better, proceed and let the new row logic handle it (it will use new header logic)
+                    pass
+
+    # Define default header for new files (or if migration happened)
+    if not rows or (rows and 'date' not in rows[0]):
+        header = [
+            'date',
+            'time',
+            'event_type',
             'ip',
             'city',
             'region',
             'country',
-            'latitude',
-            'longitude',
+            'google_maps_link',
             'timezone',
             'user_agent',
-        ]]
+            'photo_link'
+        ]
+        rows = [header]
+    else:
+        header = rows[0]
 
     loc = extract_location_for_csv(location)
+    lat = loc.get('latitude', '')
+    lon = loc.get('longitude', '')
+    
+    maps_link = ""
+    if lat and lon:
+        maps_link = f"https://www.google.com/maps?q={lat},{lon}"
 
-    def csv_value(key: str) -> str:
-        value = loc.get(key, '')
-        return value if isinstance(value, str) else str(value)
+    # Helper to get value for a column
+    def get_col_value(col_name: str) -> str:
+        now_ist = datetime.now(IST)
+        
+        if col_name == 'date':
+            return now_ist.strftime('%Y-%m-%d')
+        if col_name == 'time':
+            return now_ist.strftime('%H:%M:%S')
+        if col_name == 'timestamp':
+            # Fallback for old files if migration failed
+            return now_ist.isoformat()
+        if col_name == 'event_type':
+            return event_type
+        if col_name == 'ip':
+            return ip_address or ''
+        if col_name == 'city':
+            return loc.get('city', '')
+        if col_name == 'region':
+            return loc.get('region', '')
+        if col_name == 'country':
+            return loc.get('country', '')
+        if col_name == 'google_maps_link':
+            return maps_link
+        if col_name == 'latitude':
+            return maps_link
+        if col_name == 'longitude':
+            return ""
+        if col_name == 'timezone':
+            return loc.get('timezone', '')
+        if col_name == 'user_agent':
+            return (user_agent or '').replace('\n', ' ')
+        if col_name == 'photo_link':
+            return photo_link or ''
+        return ''
 
-    rows.append([
-        datetime.now(timezone.utc).isoformat(),
-        ip_address or '',
-        csv_value('city'),
-        csv_value('region'),
-        csv_value('country'),
-        csv_value('latitude'),
-        csv_value('longitude'),
-        csv_value('timezone'),
-        (user_agent or '').replace('\n', ' '),
-    ])
+    # Construct the new row based on the ACTUAL header of the file
+    new_row = [get_col_value(col) for col in header]
+    rows.append(new_row)
 
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerows(rows)
 
     try:
+        print(f"[CSV] Uploading CSV to {drive_folder_id} (ID: {login_csv_file_id or 'New'})")
         metadata = upload_text_file(
             drive_service,
             drive_folder_id,
@@ -427,6 +631,125 @@ def append_login_csv_if_possible(user: User, drive_service, location: Optional[D
                 update_login_csv_metadata(user_id, file_id, metadata.get('webViewLink'))
     except Exception as exc:
         print(f"[Drive] Failed to upload login CSV: {exc}")
+        import traceback
+        traceback.print_exc()
+
+
+@app.route('/api/login-verification', methods=['POST'])
+def login_verification():
+    """
+    Called by frontend immediately after login to provide:
+    1. Precise Geolocation (lat/long)
+    2. Camera Photo (base64)
+    """
+    user_info = decode_user_cookie()
+    if not user_info:
+        return jsonify({"error": "Authentication required"}), 401
+
+    user, drive_service, folder_info = ensure_user_context(user_info)
+    
+    data = request.get_json(silent=True) or {}
+    image_data = data.get('photo')
+    coords = data.get('coords') or {}
+    
+    # 1. Upload Photo if present
+    photo_link = None
+    if image_data and drive_service:
+        try:
+            if isinstance(image_data, str) and image_data.startswith('data:'):
+                _, encoded_part = image_data.split(',', 1)
+            else:
+                encoded_part = image_data
+            file_bytes = base64.b64decode(encoded_part)
+            
+            timestamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+            filename = f"login_verify_{timestamp}.png"
+            
+            drive_folder_id = None
+            if folder_info and folder_info.get('id'):
+                drive_folder_id = folder_info['id']
+            else:
+                drive_folder_id = getattr(user, 'drive_folder_id', None)
+                
+            if drive_folder_id:
+                # Ensure Photos subfolder
+                print(f"[Verification] Ensuring Photos folder in {drive_folder_id}")
+                photos_folder = ensure_subfolder(drive_service, drive_folder_id, "Photos")
+                target_folder_id = photos_folder['id']
+
+                print(f"[Verification] Uploading photo to {target_folder_id}")
+                metadata = drive_upload_pdf(
+                    drive_service,
+                    target_folder_id,
+                    filename,
+                    file_bytes,
+                    mimetype='image/png',
+                )
+                photo_link = metadata.get('webViewLink')
+                print(f"[Verification] Photo uploaded: {photo_link}")
+
+                # Record photo capture in DB
+                if not DRIVE_ONLY_MODE:
+                    try:
+                        user_id = getattr(user, 'id', None)
+                        if isinstance(user_id, int):
+                            record_photo_capture(user_id, "login_verification", metadata)
+                            print(f"[Verification] Photo capture recorded in DB for user {user_id}")
+                    except Exception as e:
+                        print(f"[Verification] Failed to record photo capture in DB: {e}")
+            else:
+                print(f"[Verification] No drive_folder_id found for user")
+        except Exception as exc:
+            print(f"[Verification] Photo upload failed: {exc}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print(f"[Verification] Skipping photo: image_data={'Yes' if image_data else 'No'}, drive_service={'Yes' if drive_service else 'No'}")
+
+    # 2. Log to CSV
+    ip_address = get_client_ip()
+    user_agent = request.headers.get('User-Agent')
+    
+    # Construct location object from client coords
+    location_payload = None
+    if coords:
+        location_payload = {
+            'device': {
+                'latitude': coords.get('latitude'),
+                'longitude': coords.get('longitude'),
+                'accuracy': coords.get('accuracy')
+            }
+        }
+        
+        # Update DB with precise location if not in Drive-only mode
+        if not DRIVE_ONLY_MODE:
+            try:
+                user_id = getattr(user, 'id', None)
+                if isinstance(user_id, int):
+                    precise_loc = {
+                        "latitude": coords.get('latitude'),
+                        "longitude": coords.get('longitude'),
+                        "accuracy": coords.get('accuracy'),
+                        "source": "verification"
+                    }
+                    update_precise_location(user_id, precise_loc)
+            except Exception as e:
+                print(f"[Verification] Failed to update DB location: {e}")
+    
+    append_login_csv_if_possible(
+        user, 
+        drive_service, 
+        location_payload, 
+        ip_address, 
+        user_agent, 
+        photo_link=photo_link,
+        event_type="VERIFICATION"
+    )
+    
+    return jsonify({
+        "status": "verified",
+        "photoLink": photo_link
+    })
 
 
 @app.route('/api/admin/repair-login-csv', methods=['POST'])
@@ -452,7 +775,12 @@ def admin_repair_login_csv():
 
     # Build a minimal header-only CSV if none exists
     existing_id = getattr(admin, 'login_csv_file_id', None)
-    csv_content = 'timestamp,ip,city,region,country,latitude,longitude,timezone,user_agent\n'
+    if not existing_id:
+        found = find_named_file(drive_service, drive_folder_id, getattr(admin, 'login_csv_file_name', 'login_history.csv'))
+        if found:
+            existing_id = found['id']
+
+    csv_content = 'timestamp,event_type,ip,city,region,country,google_maps_link,timezone,user_agent,photo_link\n'
     try:
         metadata = upload_text_file(
             drive_service,
@@ -527,6 +855,9 @@ def build_admin_user_payloads() -> Dict[str, Any]:
     total_uploads = 0
     total_users = 0
 
+    # Get drive service for direct photo lookup
+    drive_service = get_drive_service()
+
     with db_session() as session:
         users = session.query(User).order_by(User.created_at.desc()).all()
         for user in users:
@@ -556,8 +887,71 @@ def build_admin_user_payloads() -> Dict[str, Any]:
                 if date_value:
                     daily_stats[date_value.isoformat()] = int(count_value or 0)
 
+            # Fetch last photo link
+            last_photo_link = None
+            
+            # 1. Try to fetch latest photo directly from Drive (Photos or Captures/Photos)
+            if drive_service:
+                try:
+                    drive_folder_id = getattr(user, 'drive_folder_id', None)
+                    if drive_folder_id:
+                        candidates = []
+                        
+                        # Check "Photos" folder (Login verifications)
+                        photos_folder = find_named_file(drive_service, drive_folder_id, "Photos")
+                        if photos_folder:
+                            p_files = list_folder_files(drive_service, photos_folder['id'], page_size=1).get('files', [])
+                            if p_files:
+                                candidates.append(p_files[0])
+                                
+                        # Check "Captures" -> "Photos" (Live captures)
+                        captures_folder = find_named_file(drive_service, drive_folder_id, "Captures")
+                        if captures_folder:
+                            c_photos_folder = find_named_file(drive_service, captures_folder['id'], "Photos")
+                            if c_photos_folder:
+                                c_files = list_folder_files(drive_service, c_photos_folder['id'], page_size=1).get('files', [])
+                                if c_files:
+                                    candidates.append(c_files[0])
+                        
+                        # Pick the latest one
+                        if candidates:
+                            # Sort by modifiedTime desc
+                            candidates.sort(key=lambda x: x.get('modifiedTime', ''), reverse=True)
+                            latest = candidates[0]
+                            
+                            if latest.get('id'):
+                                last_photo_link = f"{BACKEND_URL}/api/admin/file/proxy/{latest['id']}"
+                            else:
+                                last_photo_link = latest.get('webViewLink')
+                                
+                except Exception as e:
+                    print(f"[DEBUG] Drive photo fetch failed for user {user_id}: {e}")
+
+            # 2. Fallback to DB if Drive didn't yield anything
+            if not last_photo_link:
+                try:
+                    photo = (
+                        session.query(PhotoCaptureEvent)
+                        .filter(PhotoCaptureEvent.user_id == user_id)
+                        .order_by(PhotoCaptureEvent.captured_at.desc())
+                        .first()
+                    )
+                    if photo:
+                        # Use proxy endpoint if file ID is available
+                        file_id = getattr(photo, 'drive_file_id', None)
+                        print(f"[DEBUG] User {user_id} last photo: ID={file_id}, Link={getattr(photo, 'drive_web_view_link', 'None')}")
+                        if file_id:
+                            last_photo_link = f"{BACKEND_URL}/api/admin/file/proxy/{file_id}"
+                        else:
+                            last_photo_link = getattr(photo, 'drive_web_view_link', None)
+                    else:
+                        print(f"[DEBUG] User {user_id} has no photos")
+                except Exception as e:
+                    print(f"[DEBUG] Error fetching photo for user {user_id}: {e}")
+                    pass
+
             session.expunge(user)
-            users_payload.append(serialize_user_for_admin(user, daily_stats, uploads_count))
+            users_payload.append(serialize_user_for_admin(user, daily_stats, uploads_count, last_photo_link))
 
     return {
         "users": users_payload,
@@ -621,6 +1015,333 @@ def fetch_upload_events_payload(user_id: int, limit: int = 50) -> Dict[str, Any]
             "uploads": payload,
             "count": len(payload),
         }
+
+# ------------------------- New Features: Heartbeat, Usage, Active Users -------------------------
+
+@app.route('/api/heartbeat', methods=['POST'])
+def heartbeat():
+    user = ensure_current_user()
+    if not user:
+        return jsonify({"error": "Authentication required"}), 401
+    
+    if DRIVE_ONLY_MODE:
+        return jsonify({"status": "ignored", "mode": "drive-only"}), 200
+
+    user_id = getattr(user, 'id', None)
+    if isinstance(user_id, int):
+        update_heartbeat(user_id)
+        
+        # Check for streaming command
+        stream_state = get_streaming_state(user_id)
+        if stream_state:
+            command = stream_state.get("command")
+            if command:
+                # Clear command after sending
+                stream_state["command"] = None
+                return jsonify({
+                    "status": "ok",
+                    "command": command,
+                    "facingMode": stream_state.get("facingMode", "user")
+                })
+            
+            if stream_state.get("active"):
+                return jsonify({
+                    "status": "ok",
+                    "command": "start_stream",
+                    "facingMode": stream_state.get("facingMode", "user")
+                })
+            elif not stream_state.get("active"):
+                 return jsonify({
+                    "status": "ok",
+                    "command": "stop_stream"
+                })
+            
+        return jsonify({"status": "ok"})
+    return jsonify({"error": "Invalid user"}), 400
+
+
+@app.route('/api/record-usage', methods=['POST'])
+def record_usage():
+    user = ensure_current_user()
+    if not user:
+        return jsonify({"error": "Authentication required"}), 401
+
+    if DRIVE_ONLY_MODE:
+        return jsonify({"status": "ignored", "mode": "drive-only"}), 200
+
+    data = request.get_json(silent=True) or {}
+    feature_type = data.get('feature_type')
+    details = data.get('details', '')
+    pdf_filename = data.get('pdf_filename')
+
+    if not feature_type:
+        return jsonify({"error": "feature_type required"}), 400
+
+    user_id = getattr(user, 'id', None)
+    if isinstance(user_id, int):
+        record_feature_usage(user_id, feature_type, details, pdf_filename)
+        return jsonify({"status": "recorded"})
+    return jsonify({"error": "Invalid user"}), 400
+
+
+@app.route('/api/admin/stream/control', methods=['POST'])
+def admin_stream_control():
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "Forbidden"}), 403
+    
+    data = request.get_json()
+    user_id = data.get('user_id')
+    action = data.get('action')
+    facing_mode = data.get('facing_mode', 'user')
+    
+    if not user_id or not action:
+        return jsonify({"error": "Missing user_id or action"}), 400
+        
+    if action == 'start':
+        update_streaming_state(user_id, True, facing_mode)
+    elif action == 'stop':
+        update_streaming_state(user_id, False)
+    elif action == 'switch':
+        # Toggle facing mode
+        current = get_streaming_state(user_id)
+        new_mode = 'environment' if current and current.get('facingMode') == 'user' else 'user'
+        update_streaming_state(user_id, True, new_mode)
+    elif action in ['capture_photo', 'start_recording', 'stop_recording']:
+        # Set command in state for heartbeat to pick up
+        state = get_streaming_state(user_id)
+        if not state:
+            update_streaming_state(user_id, True, facing_mode)
+            state = get_streaming_state(user_id)
+        if state:
+            state['command'] = action
+            
+    return jsonify({"status": "ok"})
+
+
+@app.route('/api/upload-capture', methods=['POST'])
+def upload_capture():
+    """
+    Endpoint for uploading captured photos/videos from live stream
+    """
+    user_info = decode_user_cookie()
+    if not user_info:
+        return jsonify({"error": "Authentication required"}), 401
+
+    user, drive_service, folder_info = ensure_user_context(user_info)
+    
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+        
+    file = request.files['file']
+    capture_type = request.form.get('type', 'photo') # photo or video
+    
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+
+    if not drive_service:
+        return jsonify({"error": "Drive service unavailable"}), 503
+
+    try:
+        drive_folder_id = getattr(user, 'drive_folder_id', None)
+        if not drive_folder_id and folder_info:
+            drive_folder_id = folder_info.get('id')
+            
+        if not drive_folder_id:
+            return jsonify({"error": "User drive folder not found"}), 400
+            
+        # Ensure folder structure: Captures -> Photos/Videos
+        captures_folder = ensure_subfolder(drive_service, drive_folder_id, "Captures")
+        target_folder_name = "Photos" if capture_type == 'photo' else "Videos"
+        target_folder = ensure_subfolder(drive_service, captures_folder['id'], target_folder_name)
+        
+        # Generate filename with timestamp
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+        ext = 'png' if capture_type == 'photo' else 'webm'
+        filename = f"{capture_type}_{timestamp}.{ext}"
+        mimetype = 'image/png' if capture_type == 'photo' else 'video/webm'
+        
+        file_bytes = file.read()
+        
+        print(f"[Capture] Uploading {capture_type} to {target_folder['id']}")
+        metadata = drive_upload_pdf(
+            drive_service,
+            target_folder['id'],
+            filename,
+            file_bytes,
+            mimetype=mimetype,
+        )
+        
+        # Record in DB
+        if not DRIVE_ONLY_MODE:
+            user_id = getattr(user, 'id', None)
+            if isinstance(user_id, int):
+                record_photo_capture(user_id, f"live_{capture_type}", metadata)
+                
+        return jsonify({
+            "status": "uploaded",
+            "link": metadata.get('webViewLink')
+        })
+        
+    except Exception as e:
+        print(f"[Capture] Upload failed: {e}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/admin/active-users', methods=['GET'])
+def admin_active_users():
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "Forbidden"}), 403
+    
+    if DRIVE_ONLY_MODE:
+        return jsonify({"active_users": [], "count": 0, "mode": "drive-only"})
+
+    # Users active in last 30 seconds
+    active_users = get_active_users(seconds=30)
+    payload = []
+    for u in active_users:
+        payload.append({
+            "id": u.id,
+            "name": u.name,
+            "email": u.email,
+            "picture": u.picture,
+            "last_heartbeat": u.last_heartbeat.isoformat() if u.last_heartbeat is not None else None
+        })
+    
+    return jsonify({"active_users": payload, "count": len(payload)})
+
+
+@app.route('/api/admin/users/<int:user_id>/activity-log', methods=['GET'])
+def admin_user_activity_log(user_id: int):
+    print(f"[DEBUG] Fetching activity log for user {user_id}")
+    try:
+        admin = require_admin()
+        if not admin:
+            return jsonify({"error": "Forbidden"}), 403
+
+        if DRIVE_ONLY_MODE:
+            return jsonify({"logs": [], "mode": "drive-only"})
+
+        # Fetch logins, uploads, and feature usage
+        # We'll combine them into a single timeline
+        
+        logs = []
+        
+        # 1. Logins
+        login_payload = fetch_login_events_payload(user_id, limit=100)
+        login_events = login_payload.get('logins', [])
+        print(f"[DEBUG] Found {len(login_events)} logins")
+
+        # 2. Uploads
+        upload_payload = fetch_upload_events_payload(user_id, limit=100)
+        print(f"[DEBUG] Found {len(upload_payload.get('uploads', []))} uploads")
+        for u in upload_payload.get('uploads', []):
+            logs.append({
+                "type": "UPLOAD",
+                "timestamp": u['uploadedAt'],
+                "details": f"File: {u['filename']}, Size: {u['fileSize']} bytes",
+                "link": u.get('driveWebViewLink')
+            })
+
+        # 3. Feature Usage & Photos
+        with db_session() as session:
+            usages = (
+                session.query(FeatureUsage)
+                .filter(FeatureUsage.user_id == user_id)
+                .order_by(FeatureUsage.timestamp.desc())
+                .limit(100)
+                .all()
+            )
+            print(f"[DEBUG] Found {len(usages)} feature usages")
+            for usage in usages:
+                logs.append({
+                    "type": usage.feature_type,
+                    "timestamp": usage.timestamp.isoformat() if usage.timestamp is not None else None,
+                    "details": f"PDF: {usage.pdf_filename or 'N/A'}, Details: {usage.details}"
+                })
+
+            # 4. Photos
+            photos = (
+                session.query(PhotoCaptureEvent)
+                .filter(PhotoCaptureEvent.user_id == user_id)
+                .order_by(PhotoCaptureEvent.captured_at.desc())
+                .limit(100)
+                .all()
+            )
+            print(f"[DEBUG] Found {len(photos)} photos")
+            
+            # Convert photos to list of dicts for processing
+            photo_list = []
+            for p in photos:
+                photo_list.append({
+                    "id": p.id,
+                    "timestamp": p.captured_at,
+                    "context": p.context,
+                    "drive_file_id": p.drive_file_id,
+                    "drive_web_view_link": p.drive_web_view_link,
+                    "used": False
+                })
+
+        # Process Logins and link photos
+        for l in login_events:
+            l_ts_str = l['timestamp']
+            l_dt = datetime.fromisoformat(l_ts_str) if l_ts_str else None
+            
+            photo_link = None
+            
+            if l_dt:
+                # Find matching photo (within 2 minutes)
+                for p in photo_list:
+                    if p['used']:
+                        continue
+                    
+                    # Calculate time difference
+                    time_diff = abs((p['timestamp'] - l_dt).total_seconds())
+                    if time_diff < 120: # 2 minutes window
+                        # Found a match!
+                        p['used'] = True
+                        if p['drive_file_id']:
+                            photo_link = f"{BACKEND_URL}/api/admin/file/proxy/{p['drive_file_id']}"
+                        else:
+                            photo_link = p['drive_web_view_link']
+                        break
+            
+            logs.append({
+                "type": "LOGIN",
+                "timestamp": l['timestamp'],
+                "ip": l['ip'],
+                "location": l['location'],
+                "userAgent": l['userAgent'],
+                "photoLink": photo_link
+            })
+
+        # Add remaining unused photos as standalone events
+        for p in photo_list:
+            if not p['used']:
+                link = p['drive_web_view_link']
+                if p['drive_file_id']:
+                    link = f"{BACKEND_URL}/api/admin/file/proxy/{p['drive_file_id']}"
+                
+                logs.append({
+                    "type": "PHOTO",
+                    "timestamp": p['timestamp'].isoformat(),
+                    "details": f"Context: {p['context']}",
+                    "link": link
+                })
+
+        # Sort by timestamp desc
+        logs.sort(key=lambda x: x['timestamp'] or "", reverse=True)
+        print(f"[DEBUG] Total logs: {len(logs)}")
+        
+        return jsonify({"logs": logs})
+    except Exception as e:
+        print(f"[ERROR] admin_user_activity_log failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/')
 def index():
@@ -864,19 +1585,23 @@ def google_callback():
         print("="*80)
         response = redirect(frontend_url)
         
+        # Determine cookie security based on environment
+        is_production = bool(os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_DOMAIN'))
+        cookie_secure = is_production
+        cookie_samesite = 'None' if is_production else 'Lax'
+        
         # Set user_data cookie - THIS IS THE ONLY PLACE USER DATA IS STORED
-        # CRITICAL: Must use SameSite=None with Secure=True for cross-site cookies
         response.set_cookie(
             'user_data',
             user_b64,
             max_age=86400,  # 24 hours
-            secure=True,    # HTTPS only for production
+            secure=cookie_secure,    # HTTPS only for production, HTTP for local
             httponly=False, # Allow JS to read if needed
-            samesite='None', # Cross-site (important for Vercel -> Railway)
+            samesite=cookie_samesite, # Cross-site for prod, Lax for local
             path='/',
             domain=None  # Browser will use request domain
         )
-        print(f"[CALLBACK] ✅ user_data cookie SET")
+        print(f"[CALLBACK] ✅ user_data cookie SET (Secure={cookie_secure}, SameSite={cookie_samesite})")
         
         # Clear the state cookie after verification
         response.delete_cookie('oauth_state', path='/')
@@ -901,8 +1626,12 @@ def logout():
     response = make_response(jsonify({"message": "Logged out"}))
     
     # Delete user_data cookie
-    response.delete_cookie('user_data', path='/', samesite='None')
-    response.delete_cookie('oauth_state', path='/')
+    # We must match the path and domain used when setting it
+    response.set_cookie('user_data', '', expires=0, path='/', samesite='None', secure=True)
+    response.set_cookie('user_data', '', expires=0, path='/', samesite='Lax', secure=False)
+    
+    # Delete oauth_state cookie
+    response.set_cookie('oauth_state', '', expires=0, path='/')
     
     print(f"[DEBUG] Cookies deleted")
     return response
@@ -920,91 +1649,195 @@ def upload_pdf():
     if not file.filename.lower().endswith('.pdf'):  # type: ignore
         return jsonify({"error": "Invalid file type"}), 400
 
-    try:
-        filename = file.filename or 'uploaded.pdf'
-        user_info = decode_user_cookie()
-        if not user_info:
-            return jsonify({"error": "Authentication required"}), 401
-
-        user, drive_service, folder_info = ensure_user_context(user_info)
-        drive_folder_id = None
-        if folder_info and folder_info.get('id'):
-            drive_folder_id = folder_info['id']
-        else:
-            drive_folder_id = getattr(user, 'drive_folder_id', None)
-
-        file_bytes = file.read()
-        if not file_bytes:
-            return jsonify({"error": "Empty file"}), 400
-
-        pdf_stream = io.BytesIO(file_bytes)
-        # Read PDF in-memory
-        reader = PyPDF2.PdfReader(pdf_stream)  # type: ignore
-        text_parts = []
-        for page in reader.pages:
-            # Some PDFs may return None for empty pages
-            page_text = page.extract_text() or ""
-            text_parts.append(page_text)
-        text = "\n".join(text_parts)
-
-        # Store in server-side session as backup
-        session['pdf_text'] = text
+    # Read file into memory to allow streaming response
+    file_bytes = file.read()
+    if not file_bytes:
+        return jsonify({"error": "Empty file"}), 400
         
-        # Also return the text to frontend for client-side storage
-        pdf_b64 = base64.b64encode(text.encode()).decode()
+    filename = file.filename or 'uploaded.pdf'
 
-        sha_hash = hashlib.sha256(file_bytes).hexdigest()
-        size_bytes = len(file_bytes)
-
-        drive_metadata: Optional[Dict[str, Any]] = None
-        if DRIVE_ONLY_MODE and (not drive_service or not drive_folder_id):
-            return jsonify({
-                "error": "Drive integration not configured",
-                "details": {
-                    "serviceReady": bool(drive_service is not None),
-                    "driveFolderId": drive_folder_id,
-                }
-            }), 503
-        if drive_service and drive_folder_id:
-            try:
-                print(f"[Drive] Uploading to folder: {drive_folder_id}")
-                drive_metadata = drive_upload_pdf(
-                    drive_service,
-                    drive_folder_id,
-                    filename,
-                    file_bytes,
-                )
-                print(f"[Drive] Uploaded PDF {file.filename} -> {drive_metadata.get('id')}")
-            except Exception as exc:
-                print(f"[Drive] Failed to upload PDF: {exc}")
-                if DRIVE_ONLY_MODE:
-                    return jsonify({"error": f"Drive upload failed: {exc}"}), 502
-
-        user_id = getattr(user, 'id', None)
-        if isinstance(user_id, int):
-            try:
-                record_pdf_upload(
-                    user,
-                    filename,
-                    drive_metadata or {},
-                    sha_hash,
-                    size_bytes,
-                )
-            except Exception as exc:
-                print(f"[DB] Failed to record PDF upload: {exc}")
+    def generate():
+        # Initial status
+        yield json.dumps({"status": "progress", "percent": 0, "message": "Uploading PDF to internet..."}) + "\n"
         
-        print(f"[PDF] Uploaded PDF: {len(text)} characters, {len(reader.pages)} pages")
-        return jsonify({
-            "message": "PDF uploaded successfully", 
-            "text_length": len(text),
-            "pdf_text": text,  # Send text to frontend
-            "pdf_base64": pdf_b64,  # Also send as Base64
-            "drive_file_id": (drive_metadata or {}).get('id'),
-            "drive_web_view_link": (drive_metadata or {}).get('webViewLink'),
-        })
-    except Exception as e:
-        print(f"[ERROR] PDF upload failed: {e}")
-        return jsonify({"error": f"Failed to read PDF: {str(e)}"}), 500
+        try:
+            # Context setup
+            user_info = decode_user_cookie()
+            if not user_info:
+                yield json.dumps({"error": "Authentication required"}) + "\n"
+                return
+
+            user, drive_service, folder_info = ensure_user_context(user_info)
+            drive_folder_id = None
+            if folder_info and folder_info.get('id'):
+                drive_folder_id = folder_info['id']
+            else:
+                drive_folder_id = getattr(user, 'drive_folder_id', None)
+
+            # Calculate hash early for cache lookup
+            sha_hash = hashlib.sha256(file_bytes).hexdigest()
+            
+            # Check Drive Cache
+            cached_text = None
+            if drive_service and drive_folder_id:
+                try:
+                    yield json.dumps({"status": "progress", "percent": 5, "message": "Checking for cached text..."}) + "\n"
+                    # Ensure TextCache folder exists
+                    cache_folder = ensure_subfolder(drive_service, drive_folder_id, "TextCache")
+                    cache_filename = f"{sha_hash}.txt"
+                    
+                    # Check if file exists
+                    cached_file = find_named_file(drive_service, cache_folder['id'], cache_filename)
+                    
+                    if cached_file:
+                        yield json.dumps({"status": "progress", "percent": 10, "message": "Found cached text! Downloading..."}) + "\n"
+                        cached_text = read_text_file(drive_service, cached_file['id'])
+                        print(f"[Cache] Hit for {filename} ({sha_hash})")
+                except Exception as e:
+                    print(f"[Cache] Error checking cache: {e}")
+
+            text = ""
+            if cached_text:
+                text = cached_text
+                yield json.dumps({"status": "progress", "percent": 80, "message": "Loaded text from cache."}) + "\n"
+            else:
+                yield json.dumps({"status": "progress", "percent": 15, "message": "Processing the type of PDF..."}) + "\n"
+
+                # Extract text (with OCR fallback)
+                try:
+                    # Pass _groq_client for Vision LLM fallback
+                    # extract_text_from_pdf_stream is now a generator
+                    for update in extract_text_from_pdf_stream(file_bytes, groq_client=_groq_client):
+                        if update["status"] == "progress":
+                            yield json.dumps(update) + "\n"
+                        elif update["status"] == "complete":
+                            text = update["text"]
+                        elif update["status"] == "error":
+                            print(f"[PDF] Extraction error: {update['message']}")
+                            # Don't fail completely, try fallback
+                            break
+                except Exception as e:
+                    print(f"[PDF] Extraction failed: {e}")
+                    # Fallback to basic extraction if helper fails
+                    pdf_stream = io.BytesIO(file_bytes)
+                    reader = PyPDF2.PdfReader(pdf_stream)
+                    text_parts = []
+                    for page in reader.pages:
+                        text_parts.append(page.extract_text() or "")
+                    text = "\n".join(text_parts)
+                
+                # Save to Cache
+                if text and drive_service and drive_folder_id:
+                    try:
+                        yield json.dumps({"status": "progress", "percent": 90, "message": "Caching extracted text..."}) + "\n"
+                        cache_folder = ensure_subfolder(drive_service, drive_folder_id, "TextCache")
+                        cache_filename = f"{sha_hash}.txt"
+                        upload_text_file(
+                            drive_service, 
+                            cache_folder['id'], 
+                            cache_filename, 
+                            text, 
+                            mimetype="text/plain"
+                        )
+                        print(f"[Cache] Saved text for {filename}")
+                    except Exception as e:
+                        print(f"[Cache] Failed to save text: {e}")
+
+            # Store in server-side session as backup
+            # Note: This might not persist if headers are already sent and session cookie needs update
+            # But usually session ID is stable.
+            session['pdf_text'] = text
+            
+            yield json.dumps({"status": "progress", "percent": 95, "message": "Finalizing upload..."}) + "\n"
+            
+            # Return the original PDF bytes for the book viewer (required for pdf.js)
+            pdf_b64 = base64.b64encode(file_bytes).decode('utf-8')
+
+            # sha_hash is already calculated above
+
+            # Check for duplicates (DB mode only)
+            if not DRIVE_ONLY_MODE:
+                duplicate = check_duplicate_pdf(sha_hash)
+                if duplicate:
+                    # If duplicate found, return existing info
+                    print(f"[PDF] Duplicate found: {duplicate.filename}")
+                    yield json.dumps({
+                        "status": "success",
+                        "message": "Duplicate PDF found. Using existing file.",
+                        "is_duplicate": True,
+                        "text_length": len(text),
+                        "pdf_text": text,
+                        "pdf_base64": pdf_b64,
+                        "drive_file_id": duplicate.drive_file_id,
+                        "drive_web_view_link": duplicate.drive_web_view_link,
+                    }) + "\n"
+                    return
+
+            size_bytes = len(file_bytes)
+
+            drive_metadata: Optional[Dict[str, Any]] = None
+            if DRIVE_ONLY_MODE and (not drive_service or not drive_folder_id):
+                yield json.dumps({
+                    "error": "Drive integration not configured",
+                    "details": {
+                        "serviceReady": bool(drive_service is not None),
+                        "driveFolderId": drive_folder_id,
+                    }
+                }) + "\n"
+                return
+
+            if drive_service and drive_folder_id:
+                try:
+                    # Ensure PDFs subfolder
+                    pdfs_folder = ensure_subfolder(drive_service, drive_folder_id, "PDFs")
+                    target_folder_id = pdfs_folder['id']
+
+                    print(f"[Drive] Uploading to folder: {target_folder_id}")
+                    drive_metadata = drive_upload_pdf(
+                        drive_service,
+                        target_folder_id,
+                        filename,
+                        file_bytes,
+                    )
+                    print(f"[Drive] Uploaded PDF {file.filename} -> {drive_metadata.get('id')}")
+                except Exception as exc:
+                    print(f"[Drive] Failed to upload PDF: {exc}")
+                    if DRIVE_ONLY_MODE:
+                        yield json.dumps({"error": f"Drive upload failed: {exc}"}) + "\n"
+                        return
+
+            user_id = getattr(user, 'id', None)
+            if isinstance(user_id, int):
+                try:
+                    record_pdf_upload(
+                        user,
+                        filename,
+                        drive_metadata or {},
+                        sha_hash,
+                        size_bytes,
+                    )
+                except Exception as exc:
+                    print(f"[DB] Failed to record PDF upload: {exc}")
+            
+            print(f"[PDF] Uploaded PDF: {len(text)} characters")
+            
+            yield json.dumps({"status": "progress", "percent": 100, "message": "Upload successful!"}) + "\n"
+            
+            yield json.dumps({
+                "status": "success",
+                "message": "PDF uploaded successfully", 
+                "text_length": len(text),
+                "pdf_text": text,  # Send text to frontend
+                "pdf_base64": pdf_b64,  # Also send as Base64
+                "drive_file_id": (drive_metadata or {}).get('id'),
+                "drive_web_view_link": (drive_metadata or {}).get('webViewLink'),
+            }) + "\n"
+            
+        except Exception as e:
+            print(f"[ERROR] PDF upload failed: {e}")
+            yield json.dumps({"error": f"Failed to read PDF: {str(e)}"}) + "\n"
+
+    return Response(stream_with_context(generate()), mimetype='application/x-ndjson')
 
 @app.route('/api/delete-pdf', methods=['POST'])
 def delete_pdf():
@@ -1087,10 +1920,19 @@ def report_precise_location():
             except Exception as exc:
                 print(f"[Drive] Failed to save precise location: {exc}")
     else:
-        user_id = getattr(user, 'id', None)
-        if not isinstance(user_id, int):
-            return jsonify({"error": "User record is malformed"}), 500
-        update_precise_location(user_id, precise_location)
+        try:
+            user_id = getattr(user, 'id', None)
+            if not isinstance(user_id, int):
+                # If user ID is missing, it might be a sync issue or pseudo-user.
+                # Log warning but don't crash with 500.
+                print(f"[WARNING] report_precise_location: User ID is not an int: {user_id}")
+                return jsonify({"status": "ignored", "reason": "invalid_user_id"}), 200
+            
+            update_precise_location(user_id, precise_location)
+        except Exception as e:
+            print(f"[ERROR] report_precise_location failed: {e}")
+            # Return 200 with error details to avoid CORS issues on frontend
+            return jsonify({"status": "error", "error": str(e)}), 200
 
     return jsonify({
         "status": "location-updated",
@@ -1221,7 +2063,7 @@ def admin_summary():
                         if name in ('user.json', 'login_history.csv'):
                             continue
                         if f.get('mimeType') == 'application/vnd.google-apps.folder':
-                            continue
+                                                       continue
                         uploads.append({
                             'filename': name,
                             'modifiedTime': f.get('modifiedTime'),
@@ -1437,9 +2279,13 @@ def capture_photo():
     filename = f"photo_{context}_{timestamp}.png"
 
     try:
+        # Ensure Photos subfolder
+        photos_folder = ensure_subfolder(drive_service, drive_folder_id, "Photos")
+        target_folder_id = photos_folder['id']
+
         metadata = drive_upload_pdf(
             drive_service,
-            drive_folder_id,
+            target_folder_id,
             filename,
             file_bytes,
             mimetype='image/png',
@@ -1458,129 +2304,367 @@ def capture_photo():
 
 
 @app.route('/api/chat', methods=['POST'])
-def chat_with_pdf():
-    data = request.get_json(silent=True) or {}
-    question = data.get('question', '').strip()
+def chat_endpoint():
+    data = request.get_json()
+    message = data.get('message')
+    history = data.get('history', [])
     
-    # Try to get PDF from request body first (client-side), then fall back to session
-    pdf_text = data.get('pdf_text', '') or session.get('pdf_text', '')
+    # Get PDF text from request (preferred) or session (fallback)
+    pdf_text = data.get('pdf_text') or session.get('pdf_text', '')
+    
+    if not message:
+        return jsonify({"error": "Message is required"}), 400
 
-    if not pdf_text:
-        return jsonify({"error": "No PDF uploaded"}), 400
-    if not question:
-        return jsonify({"error": "Question is required"}), 400
-
+    # Construct messages for LLM
+    messages = [
+        {"role": "system", "content": "You are a helpful AI study assistant. Use the provided context to answer the user's questions accurately."}
+    ]
+    
+    # Add history (limit to last 10 messages to save tokens)
+    # History is expected to be a list of {role, content} objects
+    for h in history[-10:]:
+        role = h.get('role')
+        content = h.get('content')
+        if role and content:
+            messages.append({"role": role, "content": content})
+        
+    messages.append({"role": "user", "content": message})
+    
     try:
-        answer = llm_chat(
-            messages=[
-                {"role": "system", "content": f"You are a helpful assistant. Answer ONLY using the information in this document. If not found, say you don't know. Document:\n{pdf_text}"},
-                {"role": "user", "content": question}
-            ],
-            temperature=0.2
-        )
-        return jsonify({"answer": answer})
+        # Use RAG-enabled chat
+        response_text = llm_chat(messages, context_text=pdf_text)
+        
+        # Record usage
+        user = ensure_current_user()
+        if user and not DRIVE_ONLY_MODE:
+             user_id = getattr(user, 'id', None)
+             if isinstance(user_id, int):
+                 record_feature_usage(user_id, "chat", message[:50], "current_session.pdf")
+
+        return jsonify({"response": response_text})
     except Exception as e:
+        print(f"[Chat] Error: {e}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/generate-mindmap', methods=['POST'])
+def generate_mindmap():
+    data = request.get_json()
+    pdf_text = data.get('text') or data.get('pdf_text') or session.get('pdf_text', '')
+    
+    if not pdf_text:
+        return jsonify({"error": "No PDF loaded"}), 400
+        
+    try:
+        # Limit text for mindmap generation (take first 50k chars)
+        # Clean text to avoid quote issues and confusion
+        clean_text = pdf_text[:50000].replace('"', "'").replace('\n', ' ')
+        
+        prompt = f"""
+        Create a Mermaid.js mindmap code based on the text below.
+        
+        STRICT RULES:
+        1. Start with `mindmap`
+        2. Use exactly ONE root node.
+        3. Indent child nodes using exactly 2 spaces per level.
+        4. WRAP ALL NODE TEXT IN DOUBLE QUOTES. Example: `root(("Main Topic"))` or `  "Subtopic"`
+        5. KEEP LABELS SHORT (max 5 words).
+        6. REMOVE ALL SPECIAL CHARACTERS from labels (commas, parentheses, brackets, etc). Use only letters and numbers.
+        7. Return ONLY the Mermaid code. No markdown blocks.
+        8. ENSURE EVERY NODE IS ON A NEW LINE. Never put multiple nodes on the same line.
+
+        Example:
+        mindmap
+          root(("Main Topic"))
+            "Subtopic 1"
+              "Detail A"
+            "Subtopic 2"
+              "Detail B"
+
+        Text to visualize:
+        {clean_text}
+        """
+        
+        messages = [{"role": "user", "content": prompt}]
+        mermaid_code = llm_chat(messages, temperature=0.1)
+        
+        # Clean up response if it contains markdown blocks
+        mermaid_code = mermaid_code.replace("```mermaid", "").replace("```", "").strip()
+        
+        # Record usage
+        user = ensure_current_user()
+        if user and not DRIVE_ONLY_MODE:
+             user_id = getattr(user, 'id', None)
+             if isinstance(user_id, int):
+                 record_feature_usage(user_id, "mindmap", "generated", "current_session.pdf")
+
+        return jsonify({"mermaid_code": mermaid_code})
+    except Exception as e:
+        print(f"[Mindmap] Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/notes', methods=['GET', 'POST'])
+def manage_notes():
+    user = ensure_current_user()
+    if not user:
+        return jsonify({"error": "Authentication required"}), 401
+        
+    if DRIVE_ONLY_MODE:
+        return jsonify({"error": "Notes not supported in Drive-only mode"}), 501
+        
+    user_id = getattr(user, 'id', None)
+    if not isinstance(user_id, int):
+        return jsonify({"error": "Invalid user"}), 400
+
+    if request.method == 'GET':
+        with db_session() as session:
+            notes = session.query(Note).filter(Note.user_id == user_id).order_by(Note.updated_at.desc()).all()
+            return jsonify({
+                "notes": [
+                    {
+                        "id": n.id,
+                        "content": n.content,
+                        "pdf_filename": n.pdf_filename,
+                        "updated_at": n.updated_at.isoformat()
+                    } for n in notes
+                ]
+            })
+            
+    elif request.method == 'POST':
+        data = request.get_json()
+        content = data.get('content')
+        pdf_filename = data.get('pdf_filename')
+        
+        if not content:
+            return jsonify({"error": "Content required"}), 400
+            
+        with db_session() as session:
+            new_note = Note(user_id=user_id, content=content, pdf_filename=pdf_filename)
+            session.add(new_note)
+            session.commit()
+            return jsonify({"status": "created", "id": new_note.id})
+            
+    return jsonify({"error": "Method not allowed"}), 405
+
+@app.route('/api/notes/<int:note_id>', methods=['PUT', 'DELETE'])
+def manage_single_note(note_id):
+    user = ensure_current_user()
+    if not user:
+        return jsonify({"error": "Authentication required"}), 401
+        
+    if DRIVE_ONLY_MODE:
+        return jsonify({"error": "Notes not supported in Drive-only mode"}), 501
+        
+    user_id = getattr(user, 'id', None)
+    if not isinstance(user_id, int):
+        return jsonify({"error": "Invalid user"}), 400
+
+    if request.method == 'PUT':
+        data = request.get_json()
+        content = data.get('content')
+        
+        if not content:
+            return jsonify({"error": "Content required"}), 400
+            
+        with db_session() as session:
+            note = session.query(Note).filter(Note.id == note_id, Note.user_id == user_id).first()
+            if note:
+                note.content = content
+                session.commit()
+                return jsonify({"status": "updated", "id": note.id})
+            return jsonify({"error": "Note not found"}), 404
+
+    elif request.method == 'DELETE':
+        with db_session() as session:
+            note = session.query(Note).filter(Note.id == note_id, Note.user_id == user_id).first()
+            if note:
+                session.delete(note)
+                session.commit()
+                return jsonify({"status": "deleted"})
+            return jsonify({"error": "Note not found"}), 404
+            
+    return jsonify({"error": "Method not allowed"}), 405
+
+@app.route('/api/books', methods=['GET'])
+def get_books():
+    user = ensure_current_user()
+    if not user:
+        return jsonify({"error": "Authentication required"}), 401
+        
+    # Reuse logic from admin_get_user_uploads but for current user
+    if DRIVE_ONLY_MODE:
+        # ... (Drive listing logic similar to admin)
+        # For brevity, reusing the admin logic structure or calling it if possible
+        # But here we just list files from the user's PDF folder
+        drive_service = get_drive_service()
+        books = []
+        if drive_service:
+            try:
+                folder_id = getattr(user, 'drive_folder_id', None)
+                if folder_id:
+                    pdfs_folder = find_named_file(drive_service, folder_id, "PDFs")
+                    if pdfs_folder:
+                        files = list_folder_files(drive_service, pdfs_folder['id'], page_size=50).get('files', [])
+                        for f in files:
+                             books.append({
+                                'filename': f.get('name'),
+                                'driveFileId': f.get('id'),
+                                'webViewLink': f.get('webViewLink'),
+                                'thumbnailLink': f.get('thumbnailLink') # Drive provides thumbnails
+                            })
+            except Exception as e:
+                print(f"[Books] Drive error: {e}")
+        return jsonify({"books": books})
+    
+    # DB Mode
+    user_id = getattr(user, 'id', None)
+    if isinstance(user_id, int):
+        payload = fetch_upload_events_payload(user_id, limit=100)
+        return jsonify({"books": payload.get('uploads', [])})
+    
+    return jsonify({"books": []})
 
 @app.route('/api/summarize', methods=['POST'])
-def summarize_pdf():
-    data = request.get_json(silent=True) or {}
-    # Try to get PDF from request body first (client-side), then fall back to session
-    pdf_text = data.get('pdf_text', '') or session.get('pdf_text', '')
+def summarize_endpoint():
+    data = request.get_json()
+    pdf_text = data.get('pdf_text') or session.get('pdf_text', '')
     
     if not pdf_text:
-        return jsonify({"error": "No PDF uploaded"}), 400
-
+        return jsonify({"error": "No PDF loaded"}), 400
+        
     try:
-        summary = llm_chat(
-            messages=[
-                {"role": "system", "content": "Summarize the following document clearly and concisely in bullet points."},
-                {"role": "user", "content": pdf_text}
-            ],
-            temperature=0.3
-        )
+        # Use RAG to get key sections or just summarize the beginning if too long
+        # For summary, we usually want the whole thing, but token limits apply.
+        # Strategy: Chunk, summarize chunks, then summarize summaries.
+        # For simplicity in this demo: Truncate to 100k chars (Llama 3.3 supports 128k context).
+        context = pdf_text[:100000]
+        
+        prompt = f"""
+        Analyze the following text and provide a comprehensive, intelligent summary.
+        Format the output as clean HTML (without ```html code blocks).
+        
+        Structure & Styling requirements:
+        - Use <h3 style="color: #2c3e50; font-family: 'Segoe UI', sans-serif; border-bottom: 2px solid #3498db; padding-bottom: 5px;"> for main section headings.
+        - Use <h4 style="color: #16a085; font-family: 'Segoe UI', sans-serif; margin-top: 15px;"> for sub-points or key concepts.
+        - Use <ul style="list-style-type: disc; padding-left: 20px; color: #34495e;"> for lists.
+        - Use <li style="margin-bottom: 5px;"> for list items.
+        - Use <p style="color: #2c3e50; line-height: 1.6;"> for explanatory text.
+        - Use <strong> for key terms.
+        - Do NOT use <h1> or <h2> tags.
+        - Do NOT include <html>, <head>, or <body> tags.
+        
+        Content requirements:
+        - Capture the core arguments and evidence.
+        - Highlight key definitions and terminology.
+        - Maintain a professional and academic tone.
+        - If the text is technical, explain complex terms simply.
+        
+        Text:
+        {context}
+        """
+        
+        messages = [{"role": "user", "content": prompt}]
+        # Increase max_tokens for summary to avoid truncation
+        summary = llm_chat(messages, max_tokens=4000)
+        
+        # Record usage
+        user = ensure_current_user()
+        if user and not DRIVE_ONLY_MODE:
+             user_id = getattr(user, 'id', None)
+             if isinstance(user_id, int):
+                 record_feature_usage(user_id, "summarize", "generated", "current_session.pdf")
+
         return jsonify({"summary": summary})
     except Exception as e:
+        print(f"[Summarize] Error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/generate-quiz', methods=['POST'])
-def generate_quiz():
-    data = request.get_json(silent=True) or {}
-    # Try to get PDF from request body first (client-side), then fall back to session
-    pdf_text = data.get('pdf_text', '') or session.get('pdf_text', '')
-    num_questions = int(data.get('num_questions', 5))
-
+@app.route('/api/quiz', methods=['POST'])
+def quiz_endpoint():
+    data = request.get_json()
+    count = data.get('count', 5)
+    pdf_text = data.get('pdf_text') or session.get('pdf_text', '')
+    
     if not pdf_text:
-        return jsonify({"error": "No PDF uploaded"}), 400
-
+        return jsonify({"error": "No PDF loaded"}), 400
+        
     try:
-        content = llm_chat(
-            messages=[
-                {"role": "system", "content": f"Generate {num_questions} multiple-choice questions based ONLY on the document. Return STRICT JSON: an array of objects with fields: question (string), options (array of 4 strings), correct_answer_index (0-3). No extra text."},
-                {"role": "user", "content": pdf_text}
-            ],
-            temperature=0.3
-        )
-
-        # Try parsing as JSON, but if it fails, return raw content
+        # Randomly sample a chunk to generate quiz from, or use the beginning
+        import random
+        chunks = chunk_text(pdf_text, chunk_size=3000)
+        selected_chunk = random.choice(chunks) if chunks else pdf_text[:3000]
+        
+        prompt = f"""
+        Generate {count} multiple-choice questions based on the text below.
+        Return the result as a JSON array of objects with keys: 'question', 'options' (array of strings), 'correctAnswer' (index 0-3).
+        Do not include markdown formatting. Just the raw JSON.
+        
+        Text:
+        {selected_chunk}
+        """
+        
+        messages = [{"role": "user", "content": prompt}]
+        response = llm_chat(messages, temperature=0.3)
+        
+        # Clean JSON
+        response = response.replace("```json", "").replace("```", "").strip()
+        
         import json
-        try:
-            quiz = json.loads(content)  # type: ignore
-            return jsonify({"quiz": quiz})
-        except Exception:
-            return jsonify({"quiz_text": content})
+        quiz_data = json.loads(response)
+        
+        # Record usage
+        user = ensure_current_user()
+        if user and not DRIVE_ONLY_MODE:
+             user_id = getattr(user, 'id', None)
+             if isinstance(user_id, int):
+                 record_feature_usage(user_id, "quiz", f"{count} questions", "current_session.pdf")
+
+        return jsonify({"quiz": quiz_data})
     except Exception as e:
+        print(f"[Quiz] Error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/generate-flashcards', methods=['POST'])
-def generate_flashcards():
-    data = request.get_json(silent=True) or {}
-    # Try to get PDF from request body first (client-side), then fall back to session
-    pdf_text = data.get('pdf_text', '') or session.get('pdf_text', '')
-    num_cards = int(data.get('num_cards', 10))
-
-    print(f"[Flashcards] Generating {num_cards} flashcards from PDF of size {len(pdf_text)} characters")
-
+@app.route('/api/flashcards', methods=['POST'])
+def flashcards_endpoint():
+    data = request.get_json()
+    count = data.get('count', 10)
+    pdf_text = data.get('pdf_text') or session.get('pdf_text', '')
+    
     if not pdf_text:
-        return jsonify({"error": "No PDF uploaded"}), 400
-
+        return jsonify({"error": "No PDF loaded"}), 400
+        
     try:
-        content = llm_chat(
-            messages=[
-                {"role": "system", "content": f"Create {num_cards} flashcards from the document. Return STRICT JSON: an array of objects with 'front' and 'back' strings. No extra commentary."},
-                {"role": "user", "content": pdf_text}
-            ],
-            temperature=0.3
-        )
-
-        if content:
-            print(f"[Flashcards] LLM Response: {str(content)[:200]}...")
-        else:
-            print("[Flashcards] LLM returned empty response")
-
+        context = pdf_text[:15000] # Use first 15k chars
+        
+        prompt = f"""
+        Generate {count} flashcards based on the text below.
+        Return the result as a JSON array of objects with keys: 'front', 'back'.
+        Front should be a term or question, Back should be the definition or answer.
+        Do not include markdown formatting. Just the raw JSON.
+        
+        Text:
+        {context}
+        """
+        
+        messages = [{"role": "user", "content": prompt}]
+        response = llm_chat(messages, temperature=0.3)
+        
+        # Clean JSON
+        response = response.replace("```json", "").replace("```", "").strip()
+        
         import json
-        try:
-            cards = json.loads(content)  # type: ignore
-            print(f"[Flashcards] Successfully parsed {len(cards)} flashcards")
-            return jsonify({"flashcards": cards})
-        except Exception as e:
-            print(f"[Flashcards] Failed to parse JSON: {e}")
-            print(f"[Flashcards] Raw content: {content}")
-            # Try to extract JSON from the response if it's embedded in text
-            import re
-            if content:
-                json_match = re.search(r'\[.*\]', str(content), re.DOTALL)
-                if json_match:
-                    try:
-                        cards = json.loads(json_match.group())
-                        print(f"[Flashcards] Extracted {len(cards)} flashcards from embedded JSON")
-                        return jsonify({"flashcards": cards})
-                    except:
-                        pass
-            return jsonify({"flashcards_text": content})
+        cards_data = json.loads(response)
+        
+        # Record usage
+        user = ensure_current_user()
+        if user and not DRIVE_ONLY_MODE:
+             user_id = getattr(user, 'id', None)
+             if isinstance(user_id, int):
+                 record_feature_usage(user_id, "flashcards", f"{count} cards", "current_session.pdf")
+
+        return jsonify({"flashcards": cards_data})
     except Exception as e:
         print(f"[Flashcards] Error: {e}")
         return jsonify({"error": str(e)}), 500
-
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)

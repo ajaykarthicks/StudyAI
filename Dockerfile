@@ -4,9 +4,11 @@ FROM python:3.10-slim
 # Set working directory
 WORKDIR /app
 
-# Install only essential system packages
+# Install essential system packages including Poppler and Tesseract
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    poppler-utils \
+    tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only requirements first (for better caching)

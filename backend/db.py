@@ -65,6 +65,8 @@ def _run_sqlite_migrations() -> None:
         statements.append("ALTER TABLE users ADD COLUMN location_cache TEXT")
     if "photo_capture_enabled" not in existing_columns:
         statements.append("ALTER TABLE users ADD COLUMN photo_capture_enabled BOOLEAN NOT NULL DEFAULT 0")
+    if "last_heartbeat" not in existing_columns:
+        statements.append("ALTER TABLE users ADD COLUMN last_heartbeat DATETIME")
 
     if not statements:
         return

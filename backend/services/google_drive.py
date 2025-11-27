@@ -10,6 +10,8 @@ from googleapiclient.discovery import build  # type: ignore[import-not-found]
 from googleapiclient.errors import HttpError  # type: ignore[import-not-found]
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload  # type: ignore[import-not-found]
 
+from google.oauth2.credentials import Credentials
+
 DRIVE_SCOPES = [
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/drive.file",
@@ -19,6 +21,23 @@ _drive_service_cache = None
 
 
 def _load_credentials():
+    # 1. Try Developer Refresh Token (Personal Drive Storage)
+    refresh_token = os.getenv("GOOGLE_DEVELOPER_REFRESH_TOKEN")
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+    
+    if refresh_token and client_id and client_secret:
+        print("[Drive] Using Developer Refresh Token for storage")
+        return Credentials(
+            None, # No access token initially
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=client_id,
+            client_secret=client_secret,
+            scopes=DRIVE_SCOPES
+        )
+
+    # 2. Try Service Account (Workspace/Shared Drive Storage)
     sa_info = None
     env_json = (os.getenv("GOOGLE_SERVICE_ACCOUNT_INFO") or "").strip()
     if env_json:
@@ -121,6 +140,24 @@ def ensure_user_folder(service, user_email: str, user_name: Optional[str] = None
         "id": folder["id"],
         "link": folder.get("webViewLink"),
     }
+
+
+def ensure_subfolder(service, parent_id: str, folder_name: str) -> Dict[str, str]:
+    """Ensure a subfolder exists within a parent folder."""
+    safe_name = folder_name.replace("'", "\\'")
+    query = f"mimeType='application/vnd.google-apps.folder' and name='{safe_name}' and '{parent_id}' in parents and trashed=false"
+    resp = service.files().list(q=query, spaces='drive', fields='files(id, webViewLink)', supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+    files = resp.get('files', [])
+    if files:
+        return {'id': files[0]['id'], 'link': files[0].get('webViewLink')}
+    
+    metadata = {
+        'name': folder_name,
+        'mimeType': 'application/vnd.google-apps.folder',
+        'parents': [parent_id]
+    }
+    folder = service.files().create(body=metadata, fields='id, webViewLink', supportsAllDrives=True).execute()
+    return {'id': folder['id'], 'link': folder.get('webViewLink')}
 
 
 def find_named_file(service, folder_id: str, filename: str) -> Optional[Dict[str, Any]]:

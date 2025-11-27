@@ -30,3 +30,11 @@ README*
 VISUAL_*
 RAILWAY_*
 START_HERE_*
+backend/venv/
+backend/backend-env/
+backend/__pycache__/
+backend/instance/
+credentials.json
+token.json
+client_secret.json
+service_account.json

@@ -22,7 +22,7 @@ echo ========================================================
 echo App restarted successfully!
 echo --------------------------------------------------------
 echo Backend: http://localhost:5000
-echo Frontend: http://127.0.0.1:5500
+echo Frontend: http://localhost:5500
 echo ========================================================
 echo You can minimize this window, but don't close it.
 pause

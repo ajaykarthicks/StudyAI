@@ -51,3 +51,21 @@ npm-debug.log
 .pytest_cache/
 .coverage
 *.cache
+
+# Google Drive Credentials
+credentials.json
+token.json
+client_secret.json
+service_account.json
+
+# Virtual Environments
+.venv/
+env/
+venv/
+
+# Docker
+.dockerignore
+
+# Render/Railway specific
+railway.json
+render.yaml

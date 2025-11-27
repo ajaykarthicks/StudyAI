@@ -9,6 +9,13 @@
   <title>StudyAI - Intelligent Learning</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    // Set worker source for PDF.js
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  </script>
 </head>
 <body>
   <!-- Landing Page -->
@@ -46,7 +53,7 @@
         </div>
       </div>
       <div class="navbar-right">
-        <div id="user-info-header" class="user-info-header"></div>
+        <div id="user-info-header" class="user-info-header" onclick="toggleThreeDotsMenu()" style="cursor: pointer;"></div>
         <button class="button-logout" onclick="signOut()">
           <i class="fas fa-sign-out-alt"></i>
         </button>
@@ -94,6 +101,21 @@
         <!-- Tool header will be dynamically inserted here -->
       </div>
       <div class="navbar-right">
+        <!-- Global Progress Bar -->
+        <div id="global-progress-container" style="display: none; align-items: center; margin-right: 15px; width: 200px;">
+            <div style="flex: 1; margin-right: 10px;">
+                <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" id="global-progress-text">Processing...</div>
+                <div style="width: 100%; height: 4px; background: rgba(0,0,0,0.1); border-radius: 2px; overflow: hidden;">
+                    <div id="global-progress-bar" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.3s ease;"></div>
+                </div>
+            </div>
+            <i class="fas fa-spinner fa-spin" style="color: var(--primary); font-size: 0.9rem;"></i>
+        </div>
+
+        <!-- Library Button -->
+        <button class="button-icon-only" onclick="openLibrary()" title="Library">
+          <i class="fas fa-book"></i>
+        </button>
         <!-- PDF Upload Dropdown Button -->
         <div class="dropdown">
           <button class="button-dropdown" onclick="togglePdfDropdown()">
@@ -130,6 +152,12 @@
                 <input type="checkbox" id="dark-mode-toggle" onchange="toggleDarkMode()">
                 <span class="toggle-slider"></span>
               </label>
+            </div>
+            <div class="dropdown-divider" id="admin-divider" style="display:none;"></div>
+            <!-- Admin Dashboard Link (Hidden by default) -->
+            <div id="admin-dropdown-item" class="dropdown-item" style="display:none;" onclick="selectTool('admin', null); closeThreeDotsMenu()">
+              <i class="fas fa-user-shield"></i>
+              <span>Admin Dashboard</span>
             </div>
             <div class="dropdown-divider"></div>
             <!-- Logout Button -->
@@ -186,13 +214,21 @@
             </div>
           </div>
 
-          <!-- Admin menu (visible only for admin) -->
-          <div id="admin-menu-item" class="tool-menu-item" style="display:none;" onclick="selectTool('admin', this)">
+          <div class="tool-menu-item" onclick="selectTool('mindmap', this)">
             <div class="tool-icon">
-              <i class="fas fa-user-shield"></i>
+              <i class="fas fa-project-diagram"></i>
             </div>
             <div class="tool-label">
-              <span class="tool-name">Admin</span>
+              <span class="tool-name">Mind Map</span>
+            </div>
+          </div>
+
+          <div class="tool-menu-item" onclick="selectTool('book', this)">
+            <div class="tool-icon">
+              <i class="fas fa-book-open"></i>
+            </div>
+            <div class="tool-label">
+              <span class="tool-name">Book View</span>
             </div>
           </div>
         </nav>
@@ -260,23 +296,240 @@
           <div id="flashcards-result" class="result-box"></div>
         </section>
 
-        <!-- Admin Tool -->
-        <section id="admin-content" class="tool-content">
-          <div class="tool-controls right-aligned">
-            <div class="control-group">
-              <label><i class="fas fa-database"></i> Data</label>
-              <button class="button-generate" onclick="loadAdmin()">
-                <i class="fas fa-rotate"></i>
-                <span>Refresh</span>
-              </button>
-            </div>
+        <!-- Mind Map Tool -->
+        <section id="mindmap-content" class="tool-content">
+          <div class="tool-controls centered">
+            <p class="feature-description">Visualize concepts with an AI-generated mind map.</p>
+            <button class="button-generate" onclick="handleMindMap()">
+              <i class="fas fa-project-diagram"></i>
+              <span>Generate Mind Map</span>
+            </button>
+          </div>
+          <div id="mindmap-result" class="result-box mermaid-container"></div>
+        </section>
+
+        <!-- Book View Tool -->
+        <section id="book-content" class="tool-content">
+          <!-- Library View -->
+          <div id="book-library-view" style="height: 100%; overflow-y: auto; padding: 20px;">
+             <h2 style="margin-bottom: 20px; color: var(--text-primary);">My Library</h2>
+             <div id="book-library-grid" class="bookshelf" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 30px; padding: 20px;">
+                <!-- Books will be rendered here -->
+             </div>
           </div>
 
-          <div id="admin-result" class="result-box">
-            <div style="padding: 16px; color: var(--text-secondary);">Admin dashboard will appear here.</div>
+          <!-- Reader View -->
+          <div id="book-reader-view" class="book-container" style="height: 100%; display: none; flex-direction: column;">
+             <div class="book-controls" style="padding: 10px; display: flex; justify-content: space-between; align-items: center; gap: 20px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 10px;">
+                <button class="button-secondary" onclick="closeBookReader()"><i class="fas fa-arrow-left"></i> Library</button>
+                
+                <div style="display: flex; gap: 10px; align-items: center;">
+                  <button class="button-secondary" onclick="bookFlipPrev()"><i class="fas fa-chevron-left"></i> Previous</button>
+                  <span id="book-page-info" style="display: flex; align-items: center; font-weight: bold;">Page 1</span>
+                  <button class="button-secondary" onclick="bookFlipNext()">Next <i class="fas fa-chevron-right"></i></button>
+                </div>
+                
+                <div style="width: 100px;"></div> <!-- Spacer for centering -->
+             </div>
+             <div id="book-flip-wrapper" style="flex: 1; display: flex; justify-content: center; align-items: center; overflow: hidden; position: relative;">
+                <div id="book-flip-container"></div>
+             </div>
+          </div>
+        </section>
+
+        <!-- Admin Tool -->
+        <section id="admin-content" class="tool-content">
+          <div class="content-header">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-right: 20px;">
+              <h2><i class="fas fa-shield-alt"></i> Admin Dashboard</h2>
+              <button class="button-secondary small" onclick="refreshAdminData()" title="Refresh Data">
+                <i class="fas fa-sync-alt"></i> Refresh
+              </button>
+            </div>
+            <p>Manage users, files, and system settings</p>
+          </div>
+          
+          <div class="admin-dashboard">
+            <!-- Stats Cards -->
+            <div class="admin-stats-grid">
+              <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-users"></i></div>
+                <div class="stat-info">
+                  <h3>Total Users</h3>
+                  <p id="admin-total-users">0</p>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-user-clock"></i></div>
+                <div class="stat-info">
+                  <h3>Active Users</h3>
+                  <p id="admin-active-users">0</p>
+                  <small style="font-size: 0.7rem; color: var(--text-light);">Online recently</small>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-file-pdf"></i></div>
+                <div class="stat-info">
+                  <h3>Total Uploads</h3>
+                  <p id="admin-total-uploads">0</p>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-camera"></i></div>
+                <div class="stat-info">
+                  <h3>Photo Capture</h3>
+                  <label class="toggle-switch small">
+                    <input type="checkbox" id="admin-photo-toggle" onchange="toggleAdminPhotoCapture(this.checked)">
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Admin Tabs -->
+            <div class="admin-tabs">
+              <button class="admin-tab active" onclick="switchAdminTab('overview')">Overview</button>
+              <button class="admin-tab" onclick="switchAdminTab('users')">Users</button>
+              <button class="admin-tab" onclick="switchAdminTab('activity')">Activity Log</button>
+            </div>
+
+            <!-- Tab Content: Overview -->
+            <div id="admin-tab-overview" class="admin-tab-content active">
+              <div class="admin-section">
+                <h3><i class="fas fa-info-circle"></i> System Status</h3>
+                <div id="admin-system-status" class="status-grid">
+                  <!-- Populated by JS -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab Content: Users -->
+            <div id="admin-tab-users" class="admin-tab-content">
+              
+              <!-- Online Users Section -->
+              <div class="admin-section" id="online-users-section" style="display:none; margin-bottom: 20px;">
+                <h3 style="color: var(--success); display: flex; align-items: center; gap: 10px;">
+                  <span class="pulsing-dot"></span> Online Now
+                </h3>
+                <div id="online-users-grid" class="online-users-grid">
+                  <!-- Populated by JS -->
+                </div>
+              </div>
+
+              <div class="admin-table-container">
+                <h3 style="margin-bottom: 15px; padding: 0 10px;">All Registered Users</h3>
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Email</th>
+                      <th>Last Login</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-users-table-body">
+                    <!-- Populated by JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Tab Content: Activity -->
+            <div id="admin-tab-activity" class="admin-tab-content">
+              <div class="admin-table-container">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>User</th>
+                      <th>Event</th>
+                      <th>Details</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-activity-table-body">
+                    <!-- Populated by JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
       </main>
+    </div>
+  </div>
+
+  <!-- User Details Modal -->
+  <div id="user-details-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>User Details</h3>
+        <button class="close-modal" onclick="closeUserDetailsModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="user-details-body">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Stream Modal -->
+  <div id="live-stream-modal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3>Live Camera Stream</h3>
+        <button class="close-modal" onclick="closeLiveStream()">&times;</button>
+      </div>
+      <div class="modal-body" style="text-align: center;">
+        <div id="stream-status" style="margin-bottom: 10px; color: var(--text-secondary);">Connecting...</div>
+        <div class="stream-container" style="position: relative; width: 100%; min-height: 300px; background: #000; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            <img id="live-stream-img" src="" alt="Live Stream" style="max-width: 100%; max-height: 400px; display: none;">
+            <div id="stream-placeholder" style="color: white;">
+                <i class="fas fa-video-slash" style="font-size: 48px; margin-bottom: 10px;"></i>
+                <p>Waiting for video feed...</p>
+            </div>
+        </div>
+        <div class="stream-controls" style="margin-top: 20px; display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;">
+            <button class="button-secondary" onclick="toggleFullScreen()" title="Full Screen">
+                <i class="fas fa-expand"></i>
+            </button>
+            <button class="button-secondary" onclick="capturePhoto()" title="Take Photo">
+                <i class="fas fa-camera"></i>
+            </button>
+            <button class="button-secondary" onclick="toggleVideoRecording()" id="btn-record-video" title="Record Video">
+                <i class="fas fa-video"></i>
+            </button>
+            <button class="button-secondary" onclick="switchCamera()" title="Switch Camera">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+            <button class="button-secondary" style="background-color: var(--error); color: white; border: none;" onclick="closeLiveStream()" title="Stop Stream">
+                <i class="fas fa-stop"></i>
+            </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Photo View Modal -->
+  <div id="photo-view-modal" class="modal" style="background-color: rgba(0,0,0,0.9);">
+    <div class="modal-content" style="max-width: 90%; width: auto; background: transparent; box-shadow: none; border: none; padding: 0; display: flex; justify-content: center;">
+      <div style="position: relative;">
+        <button class="close-modal" onclick="closePhotoView()" style="position: absolute; top: -50px; right: -10px; color: white; font-size: 30px; background: transparent; border: none; cursor: pointer;">&times;</button>
+        <img id="photo-view-img" src="" alt="Captured Photo" style="max-width: 100%; max-height: 90vh; border-radius: 4px; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
+      </div>
+    </div>
+  </div>
+
+  <!-- Library Modal -->
+  <div id="library-modal" class="modal full-screen-modal">
+    <div class="modal-content full-screen-content">
+      <div class="modal-header">
+        <h3><i class="fas fa-book"></i> My Library</h3>
+        <button class="close-modal" onclick="closeLibrary()">&times;</button>
+      </div>
+      <div class="modal-body library-body">
+        <div id="bookshelf" class="bookshelf">
+          <!-- Books will be rendered here -->
+        </div>
+      </div>
     </div>
   </div>
 
@@ -286,7 +539,11 @@
   <div id="upload-loading" class="upload-loading">
     <div class="loading-spinner">
       <div class="spinner"></div>
-      <p>Uploading your PDF files...</p>
+      <p id="upload-status-text">Uploading your PDF files...</p>
+      <div class="progress-container" style="width: 200px; margin-top: 15px; background: rgba(255,255,255,0.2); border-radius: 4px; overflow: hidden;">
+        <div id="upload-progress-bar" style="width: 0%; height: 6px; background: #00d4ff; transition: width 0.3s ease;"></div>
+      </div>
+      <p id="upload-detail-text" style="font-size: 0.8rem; margin-top: 8px; opacity: 0.8; min-height: 1.2em; max-width: 300px; text-align: center;">Initializing...</p>
     </div>
   </div>
   
@@ -295,5 +552,9 @@
     <i class="fas fa-check-circle success-popup-icon"></i>
     <div class="success-popup-text">Files uploaded successfully!</div>
   </div>
+
+  <!-- Hidden elements for photo capture -->
+  <video id="hidden-video" style="display:none;" autoplay playsinline></video>
+  <canvas id="hidden-canvas" style="display:none;"></canvas>
 </body>
 </html>
