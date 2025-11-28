@@ -1,4 +1,6 @@
 import os
+import socket
+from urllib.parse import urlparse
 from contextlib import contextmanager
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import OperationalError
@@ -10,14 +12,27 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///instance/studyai.db")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+connect_args = {}
+
 if DATABASE_URL.startswith("sqlite"):
     db_path = DATABASE_URL.replace("sqlite:///", "")
     directory = os.path.dirname(db_path)
     if directory and not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
-
-# SQLite needs this option when used with threads
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+    # SQLite needs this option when used with threads
+    connect_args = {"check_same_thread": False}
+elif "supabase.co" in DATABASE_URL:
+    # Force IPv4 for Supabase to avoid "Network is unreachable" on IPv6-only environments
+    try:
+        parsed = urlparse(DATABASE_URL)
+        if parsed.hostname:
+            # Resolve hostname to IPv4 address
+            ipv4_addr = socket.gethostbyname(parsed.hostname)
+            print(f"[DB] Resolved {parsed.hostname} to {ipv4_addr} (forcing IPv4)")
+            # Pass hostaddr to libpq via connect_args to skip DNS resolution but keep SSL verification working
+            connect_args = {"hostaddr": ipv4_addr}
+    except Exception as e:
+        print(f"[DB] Failed to resolve IPv4 for Supabase: {e}")
 
 engine = create_engine(
     DATABASE_URL,
