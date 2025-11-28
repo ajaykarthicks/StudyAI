@@ -77,11 +77,11 @@ IST = timezone(timedelta(hours=5, minutes=30))
 try:
     from pathlib import Path
     # First load root .env if present
-    load_dotenv(override=True)
+    load_dotenv(override=False)
     # Then load backend/.env to support running from repo root
     backend_env = Path(__file__).parent / ".env"
     if backend_env.exists():
-        load_dotenv(dotenv_path=str(backend_env), override=True)
+        load_dotenv(dotenv_path=str(backend_env), override=False)
         print(f"[Init] Loaded .env from {backend_env}")
     else:
         print(f"[Init] .env not found at {backend_env}")
@@ -172,7 +172,8 @@ if not DRIVE_ONLY_MODE:
         init_db()
     except Exception as e:
         print(f"[ERROR] Failed to initialize database: {e}")
-        raise
+        # Do not raise, so the app can start and we can see logs
+        # raise
 
 # Google OAuth Configuration
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')

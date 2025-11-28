@@ -34,6 +34,7 @@ backend/venv/
 backend/backend-env/
 backend/__pycache__/
 backend/instance/
+backend/.env
 credentials.json
 token.json
 client_secret.json
