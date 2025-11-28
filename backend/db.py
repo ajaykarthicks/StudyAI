@@ -24,11 +24,16 @@ if DATABASE_URL.startswith("sqlite"):
 elif "supabase.co" in DATABASE_URL:
     # Force IPv4 for Supabase to avoid "Network is unreachable" on IPv6-only environments
     try:
-        parsed = urlparse(DATABASE_URL)
-        if parsed.hostname:
+        # Robust hostname extraction to handle passwords with '@'
+        # Split by the LAST '@' to separate credentials from host
+        part_after_at = DATABASE_URL.rpartition('@')[2]
+        # Split by ':' (port) or '/' (path) to isolate hostname
+        hostname = part_after_at.split(':')[0].split('/')[0]
+        
+        if hostname:
             # Resolve hostname to IPv4 address
-            ipv4_addr = socket.gethostbyname(parsed.hostname)
-            print(f"[DB] Resolved {parsed.hostname} to {ipv4_addr} (forcing IPv4)")
+            ipv4_addr = socket.gethostbyname(hostname)
+            print(f"[DB] Resolved {hostname} to {ipv4_addr} (forcing IPv4)")
             # Pass hostaddr to libpq via connect_args to skip DNS resolution but keep SSL verification working
             connect_args = {"hostaddr": ipv4_addr}
     except Exception as e:
