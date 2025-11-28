@@ -11,10 +11,13 @@ from sqlalchemy.orm import scoped_session, sessionmaker, declarative_base
 # It filters out all IPv6 addresses from DNS lookups.
 _original_getaddrinfo = socket.getaddrinfo
 
-def _patched_getaddrinfo(*args, **kwargs):
-    res = _original_getaddrinfo(*args, **kwargs)
-    # Filter results to only include AF_INET (IPv4)
-    return [r for r in res if r[0] == socket.AF_INET]
+def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    # If family is unspecified (0) or IPv6, force it to IPv4 (AF_INET)
+    if family == 0 or family == socket.AF_INET6:
+        family = socket.AF_INET
+    
+    # print(f"[DNS] Forcing IPv4 resolution for {host}")
+    return _original_getaddrinfo(host, port, family, type, proto, flags)
 
 socket.getaddrinfo = _patched_getaddrinfo
 print("[Init] Applied global IPv4-only monkeypatch for socket.getaddrinfo")
