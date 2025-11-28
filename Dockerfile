@@ -23,12 +23,9 @@ RUN pip install --no-cache-dir --upgrade pip setuptools && \
 # Copy backend files
 COPY backend/ .
 
-# Expose port
-EXPOSE 5000
+# Expose port (Hugging Face uses 7860 by default, Render uses 10000)
+EXPOSE 7860
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:5000/health || exit 1
-
-# Run the app with gunicorn (single worker for 512MB RAM limit, multiple threads for concurrency)
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers=1", "--threads=4", "--worker-class=gthread", "--worker-tmp-dir=/dev/shm", "--max-requests=50", "--timeout=120", "app:app"]
+# Run the app with gunicorn
+# Use shell form to allow variable expansion for $PORT
+CMD gunicorn --bind 0.0.0.0:${PORT:-7860} --workers 1 --threads 4 --worker-class=gthread --worker-tmp-dir=/dev/shm --max-requests=50 --timeout=120 app:app
