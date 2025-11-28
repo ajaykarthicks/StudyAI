@@ -14,15 +14,8 @@ except ImportError:
     FITZ_AVAILABLE = False
     logging.warning("PyMuPDF (fitz) not found. Install pymupdf.")
 
-# Try importing EasyOCR
-try:
-    import easyocr
-    import numpy as np
-    import cv2
-    EASYOCR_AVAILABLE = True
-except ImportError:
-    EASYOCR_AVAILABLE = False
-    logging.warning("EasyOCR or OpenCV not found. Install easyocr.")
+# Try importing EasyOCR (Lazy load)
+EASYOCR_AVAILABLE = None # Will be checked on first use
 
 # Try importing OCR libraries (Tesseract & Pillow)
 try:
@@ -50,15 +43,41 @@ except ImportError:
 
 # Initialize EasyOCR reader (lazy load)
 _reader = None
+easyocr_module = None
+cv2_module = None
+np_module = None
+
+def ensure_easyocr():
+    global EASYOCR_AVAILABLE, easyocr_module, cv2_module, np_module
+    if EASYOCR_AVAILABLE is not None:
+        return EASYOCR_AVAILABLE
+        
+    try:
+        import easyocr
+        import numpy as np
+        import cv2
+        easyocr_module = easyocr
+        cv2_module = cv2
+        np_module = np
+        EASYOCR_AVAILABLE = True
+        print("[OCR] EasyOCR modules loaded successfully")
+    except ImportError as e:
+        EASYOCR_AVAILABLE = False
+        logging.warning(f"EasyOCR or OpenCV not found: {e}")
+        
+    return EASYOCR_AVAILABLE
 
 def get_easyocr_reader():
     global _reader
-    if _reader is None and EASYOCR_AVAILABLE:
+    if not ensure_easyocr():
+        return None
+        
+    if _reader is None:
         print("[OCR] Initializing EasyOCR reader...")
         # 'en' for English. Add more languages if needed.
         # gpu=False to be safe on standard environments, or True if CUDA available
         try:
-            _reader = easyocr.Reader(['en'], gpu=False) 
+            _reader = easyocr_module.Reader(['en'], gpu=False) 
         except Exception as e:
             logging.warning(f"Failed to init EasyOCR: {e}")
     return _reader
@@ -70,28 +89,31 @@ def preprocess_image_for_ocr(pil_image):
     2. Denoise
     3. Adaptive Thresholding
     """
+    if not ensure_easyocr():
+        return np_module.array(pil_image) if np_module else None
+
     try:
         # Convert PIL to OpenCV format (RGB -> BGR)
-        img = np.array(pil_image)
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        img = np_module.array(pil_image)
+        img = cv2_module.cvtColor(img, cv2_module.COLOR_RGB2BGR)
 
         # Convert to grayscale
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray = cv2_module.cvtColor(img, cv2_module.COLOR_BGR2GRAY)
 
         # Denoise (remove salt-and-pepper noise)
         # h=10 is a good starting point for strength
-        denoised = cv2.fastNlMeansDenoising(gray, h=10)
+        denoised = cv2_module.fastNlMeansDenoising(gray, h=10)
 
         # Adaptive Thresholding (Gaussian)
         # Block size 11, C=2
-        thresh = cv2.adaptiveThreshold(
-            denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+        thresh = cv2_module.adaptiveThreshold(
+            denoised, 255, cv2_module.ADAPTIVE_THRESH_GAUSSIAN_C, cv2_module.THRESH_BINARY, 11, 2
         )
         
         return thresh
     except Exception as e:
         print(f"[OCR] Preprocessing failed: {e}")
-        return np.array(pil_image) # Fallback to original
+        return np_module.array(pil_image) # Fallback to original
 
 def extract_text_from_pdf_stream(pdf_bytes: bytes, groq_client=None, progress_callback=None):
     """
@@ -200,7 +222,7 @@ def extract_text_from_pdf_stream(pdf_bytes: bytes, groq_client=None, progress_ca
                         print(f"[OCR] Gemini Vision failed: {ve}")
 
                 # Try EasyOCR (Better for handwriting than Tesseract)
-                if EASYOCR_AVAILABLE:
+                if ensure_easyocr():
                     try:
                         reader_inst = get_easyocr_reader()
                         if reader_inst:
@@ -213,7 +235,7 @@ def extract_text_from_pdf_stream(pdf_bytes: bytes, groq_client=None, progress_ca
                             
                             # If result is still poor, try raw image
                             if len(easy_text.strip()) < 10:
-                                raw_img = np.array(pil_image)
+                                raw_img = np_module.array(pil_image)
                                 result_raw = reader_inst.readtext(raw_img, detail=0)
                                 easy_text_raw = " ".join(result_raw)
                                 if len(easy_text_raw) > len(easy_text):
