@@ -189,6 +189,9 @@ if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
 if os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_DOMAIN'):
     RAILWAY_PUBLIC_DOMAIN = os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_DOMAIN')
     BACKEND_URL = f"https://{RAILWAY_PUBLIC_DOMAIN}"
+elif os.getenv('SPACE_HOST'):
+    # Hugging Face Spaces
+    BACKEND_URL = f"https://{os.getenv('SPACE_HOST')}"
 else:
     BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:5000')
 
