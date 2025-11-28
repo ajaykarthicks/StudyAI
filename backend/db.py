@@ -22,12 +22,18 @@ print("[Init] Applied global IPv4-only monkeypatch for socket.getaddrinfo")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///instance/studyai.db")
 
+# Clean up DATABASE_URL (remove quotes if present)
+if DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.strip().strip('"').strip("'")
+
 # Fix for some Postgres providers (like Supabase/Heroku) using 'postgres://' instead of 'postgresql://'
 if DATABASE_URL:
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+pg8000://", 1)
     elif DATABASE_URL.startswith("postgresql://"):
         DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+pg8000://", 1)
+
+print(f"[DB] Using DATABASE_URL: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else 'sqlite'}")
 
 connect_args = {}
 
@@ -39,22 +45,10 @@ if DATABASE_URL.startswith("sqlite"):
     # SQLite needs this option when used with threads
     connect_args = {"check_same_thread": False}
 elif "supabase.co" in DATABASE_URL:
-    # Keep the explicit hostaddr logic as a backup/optimization
-    try:
-        # Robust hostname extraction to handle passwords with '@'
-        # Split by the LAST '@' to separate credentials from host
-        part_after_at = DATABASE_URL.rpartition('@')[2]
-        # Split by ':' (port) or '/' (path) to isolate hostname
-        hostname = part_after_at.split(':')[0].split('/')[0]
-        
-        if hostname:
-            # Resolve hostname to IPv4 address
-            ipv4_addr = socket.gethostbyname(hostname)
-            print(f"[DB] Resolved {hostname} to {ipv4_addr} (forcing IPv4)")
-            # Pass hostaddr to libpq via connect_args to skip DNS resolution but keep SSL verification working
-            connect_args = {"hostaddr": ipv4_addr}
-    except Exception as e:
-        print(f"[DB] Failed to resolve IPv4 for Supabase: {e}")
+    # pg8000 is pure Python and respects the socket monkeypatch, so we don't need the hostaddr hack anymore.
+    # In fact, passing hostaddr to pg8000 might not be supported or might conflict.
+    # We rely 100% on the socket monkeypatch above.
+    pass
 
 engine = create_engine(
     DATABASE_URL,
