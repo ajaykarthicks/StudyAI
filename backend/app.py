@@ -94,7 +94,8 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY')
 # Configuration
 DRIVE_ONLY_MODE = os.getenv('DRIVE_ONLY_MODE', 'false').lower() == 'true'
 DRIVE_USER_MODE = os.getenv('DRIVE_USER_MODE', 'false').lower() == 'true'
-ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
+ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', '').lower().strip()
+print(f"[Config] ADMIN_EMAIL set to: '{ADMIN_EMAIL}'")
 
 # Detect environment
 IS_PRODUCTION = os.getenv('RENDER') == 'true' or os.getenv('RAILWAY_PUBLIC_DOMAIN') is not None or os.getenv('SPACE_ID') is not None
@@ -853,8 +854,9 @@ def require_admin() -> Optional[User]:
         info = decode_user_cookie()
         if not info:
             return None
-        email = info.get('email')
+        email = info.get('email', '').lower().strip()
         if email != ADMIN_EMAIL:
+            print(f"[Admin] Drive-mode access denied for {email} (Expected: {ADMIN_EMAIL})")
             return None
         pseudo = SimpleNamespace(
             email=email,
@@ -869,7 +871,8 @@ def require_admin() -> Optional[User]:
     if not user:
         return None
     user_email = getattr(user, 'email', None)
-    if not isinstance(user_email, str) or user_email != ADMIN_EMAIL:
+    if not isinstance(user_email, str) or user_email.lower().strip() != ADMIN_EMAIL:
+        print(f"[Admin] Access denied for {user_email} (Expected: {ADMIN_EMAIL})")
         return None
     return user
 
@@ -1405,7 +1408,11 @@ def me():
                     drive_state = load_user_json(drive_service, folder_meta['id']) or {}
             except Exception as exc:
                 print(f"[Drive] /me drive-only ensure folder failed: {exc}")
-        is_admin = user_info.get('email') == ADMIN_EMAIL
+        
+        email = user_info.get('email', '').lower().strip()
+        is_admin = email == ADMIN_EMAIL
+        print(f"[Auth] Drive-mode User {email} isAdmin={is_admin} (Match against '{ADMIN_EMAIL}')")
+        
         return jsonify({
             "authenticated": True,
             "user": user_info,
@@ -1421,6 +1428,13 @@ def me():
     if user_record:
         user_id = getattr(user_record, 'id', None)
         email = getattr(user_record, 'email', None)
+        
+        is_admin = False
+        if isinstance(email, str):
+            is_admin = email.lower().strip() == ADMIN_EMAIL
+            
+        print(f"[Auth] User {email} isAdmin={is_admin} (Match against '{ADMIN_EMAIL}')")
+        
         response_payload.update({
             "dbUser": {
                 "id": user_id,
@@ -1430,7 +1444,7 @@ def me():
                 "loginCsvLink": getattr(user_record, 'login_csv_web_view_link', None),
             },
             "photoCaptureEnabled": bool(getattr(user_record, 'photo_capture_enabled', False)),
-            "isAdmin": bool(isinstance(email, str) and email == ADMIN_EMAIL),
+            "isAdmin": is_admin,
         })
     else:
         response_payload['isAdmin'] = False
