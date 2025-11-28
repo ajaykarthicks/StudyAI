@@ -62,6 +62,7 @@ from utils import (
     update_streaming_state,
     update_streaming_frame,
     get_streaming_state,
+    pop_streaming_command,
 )
 from ocr_helper import extract_text_from_pdf_stream
 
@@ -1058,19 +1059,18 @@ def heartbeat():
     if isinstance(user_id, int):
         update_heartbeat(user_id)
         
-        # Check for streaming command
+        # Check for streaming command (and clear it if present)
+        command = pop_streaming_command(user_id)
         stream_state = get_streaming_state(user_id)
-        if stream_state:
-            command = stream_state.get("command")
-            if command:
-                # Clear command after sending
-                stream_state["command"] = None
-                return jsonify({
-                    "status": "ok",
-                    "command": command,
-                    "facingMode": stream_state.get("facingMode", "user")
-                })
+        
+        if command:
+            return jsonify({
+                "status": "ok",
+                "command": command,
+                "facingMode": stream_state.get("facingMode", "user") if stream_state else "user"
+            })
             
+        if stream_state:
             if stream_state.get("active"):
                 return jsonify({
                     "status": "ok",
@@ -1214,6 +1214,81 @@ def upload_capture():
         print(f"[Capture] Upload failed: {e}")
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/stream/upload', methods=['POST'])
+def stream_upload():
+    """
+    Endpoint for uploading live stream frames (JPEG blobs)
+    """
+    user_info = decode_user_cookie()
+    if not user_info:
+        return jsonify({"error": "Authentication required"}), 401
+
+    # We don't need full Drive context here, just the user ID
+    # Use get_authenticated_user to avoid Drive calls if possible, or fallback to cookie
+    user = get_authenticated_user()
+    if not user:
+        # Try to get user from DB using cookie email
+        email = user_info.get('email')
+        with db_session() as session:
+            user = session.query(User).filter_by(email=email).first()
+            if user:
+                session.expunge(user)
+    
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+        
+    user_id = getattr(user, 'id', None)
+    if not isinstance(user_id, int):
+        return jsonify({"error": "Invalid user ID"}), 400
+
+    frame_data = request.get_data()
+    if not frame_data:
+        return jsonify({"error": "No data"}), 400
+        
+    update_streaming_frame(user_id, frame_data)
+    return jsonify({"status": "ok"})
+
+
+@app.route('/api/stream/view/<int:user_id>', methods=['GET'])
+def stream_view(user_id: int):
+    """
+    Endpoint for admin to view live stream (MJPEG or single frame)
+    """
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "Forbidden"}), 403
+        
+    state = get_streaming_state(user_id)
+    if not state or not state.get('lastFrame'):
+        # Return placeholder or 404
+        return "No stream available", 404
+        
+    # Return the last frame as an image
+    # For MJPEG, we would need a generator loop.
+    # Since the frontend sets src to this URL, it expects an image.
+    # If we want live video, we should use multipart/x-mixed-replace.
+    
+    # Let's try to implement MJPEG stream
+    def generate():
+        while True:
+            current_state = get_streaming_state(user_id)
+            if not current_state or not current_state.get('lastFrame'):
+                time.sleep(0.1)
+                continue
+                
+            frame_b64 = current_state['lastFrame']
+            try:
+                frame_bytes = base64.b64decode(frame_b64)
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            except Exception:
+                pass
+            
+            time.sleep(0.05) # Limit to ~20fps check
+            
+    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
 @app.route('/api/admin/active-users', methods=['GET'])

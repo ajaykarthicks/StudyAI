@@ -36,6 +36,8 @@ class User(Base):
     location_cache: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     last_heartbeat: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    streaming_command: Mapped[Optional[str]] = mapped_column(String(32))  # start, stop, capture_photo
+    streaming_facing_mode: Mapped[Optional[str]] = mapped_column(String(32), default="user")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     photo_capture_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -129,3 +131,16 @@ class Note(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user: Mapped[User] = relationship("User", back_populates="notes")
+
+
+class StreamState(Base):
+    __tablename__ = "stream_states"
+
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), primary_key=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    command: Mapped[Optional[str]] = mapped_column(String(32))  # start, stop, capture_photo
+    facing_mode: Mapped[str] = mapped_column(String(32), default="user")
+    last_frame: Mapped[Optional[bytes]] = mapped_column(Text) # Storing as Base64 string (Text) is safer for some DBs, but LargeBinary is better. Let's use Text for base64 to be safe with drivers.
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped[User] = relationship("User")

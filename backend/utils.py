@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 from flask import request
 
 from db import db_session
-from models import DailyUploadStat, LoginEvent, PdfUpload, PhotoCaptureEvent, User, FeatureUsage
+from models import DailyUploadStat, LoginEvent, PdfUpload, PhotoCaptureEvent, User, FeatureUsage, StreamState
 
 
 def decode_user_cookie() -> Optional[Dict[str, Any]]:
@@ -271,7 +271,8 @@ def update_heartbeat(user_id: int) -> None:
         user = session.query(User).filter_by(id=user_id).first()
         if not user:
             return
-        setattr(user, "last_heartbeat", datetime.now(timezone.utc))
+        # Use naive UTC for compatibility with TIMESTAMP WITHOUT TIME ZONE
+        setattr(user, "last_heartbeat", datetime.now(timezone.utc).replace(tzinfo=None))
         session.add(user)
 
 
@@ -293,7 +294,8 @@ def check_duplicate_pdf(sha256_hash: str) -> Optional[PdfUpload]:
 
 def get_active_users(seconds: int = 30) -> list[User]:
     with db_session() as session:
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=seconds)
+        # Use naive UTC cutoff
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=seconds)
         users = session.query(User).filter(User.last_heartbeat >= cutoff).all()
         # Expunge to use outside session
         for user in users:
@@ -301,26 +303,55 @@ def get_active_users(seconds: int = 30) -> list[User]:
         return users
 
 
-# In-memory storage for live streaming states
-# Format: { user_id: { "active": bool, "facingMode": str, "lastFrame": bytes, "updatedAt": datetime } }
-STREAMING_STATES: Dict[int, Dict[str, Any]] = {}
-
-
 def get_streaming_state(user_id: int) -> Optional[Dict[str, Any]]:
-    return STREAMING_STATES.get(user_id)
+    with db_session() as session:
+        state = session.query(StreamState).filter_by(user_id=user_id).first()
+        if not state:
+            return None
+        
+        return {
+            "active": state.is_active,
+            "facingMode": state.facing_mode,
+            "command": state.command,
+            "updatedAt": state.updated_at,
+            "lastFrame": state.last_frame # Base64 string
+        }
 
 
 def update_streaming_state(user_id: int, active: bool, facing_mode: str = "user") -> None:
-    if user_id not in STREAMING_STATES:
-        STREAMING_STATES[user_id] = {}
-    STREAMING_STATES[user_id].update({
-        "active": active,
-        "facingMode": facing_mode,
-        "updatedAt": datetime.now(timezone.utc)
-    })
+    with db_session() as session:
+        state = session.query(StreamState).filter_by(user_id=user_id).first()
+        if not state:
+            state = StreamState(user_id=user_id)
+            session.add(state)
+        
+        state.is_active = active
+        state.facing_mode = facing_mode
+        state.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        # Don't clear command here, it's cleared by heartbeat
+        session.commit()
 
 
 def update_streaming_frame(user_id: int, frame_data: bytes) -> None:
-    if user_id in STREAMING_STATES:
-        STREAMING_STATES[user_id]["lastFrame"] = frame_data
-        STREAMING_STATES[user_id]["updatedAt"] = datetime.now(timezone.utc)
+    with db_session() as session:
+        state = session.query(StreamState).filter_by(user_id=user_id).first()
+        if not state:
+            state = StreamState(user_id=user_id, is_active=True)
+            session.add(state)
+        
+        # Convert bytes to base64 string for Text column
+        b64_frame = base64.b64encode(frame_data).decode('utf-8')
+        state.last_frame = b64_frame
+        state.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        session.commit()
+
+
+def pop_streaming_command(user_id: int) -> Optional[str]:
+    with db_session() as session:
+        state = session.query(StreamState).filter_by(user_id=user_id).first()
+        if state and state.command:
+            cmd = state.command
+            state.command = None
+            session.commit()
+            return cmd
+        return None
