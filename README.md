@@ -1,3 +1,13 @@
+---
+title: Smart Study Hub
+emoji: 📚
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+app_port: 7860
+---
+
 # AI-Powered Smart Study Hub
 
 This is a full-stack web application that allows users to upload PDFs and interact with them using various AI-powered tools, including a chatbot, summarizer, quiz generator, and flashcard generator.
