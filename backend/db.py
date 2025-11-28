@@ -6,6 +6,10 @@ from sqlalchemy.orm import scoped_session, sessionmaker, declarative_base
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///instance/studyai.db")
 
+# Fix for some Postgres providers (like Supabase/Heroku) using 'postgres://' instead of 'postgresql://'
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 if DATABASE_URL.startswith("sqlite"):
     db_path = DATABASE_URL.replace("sqlite:///", "")
     directory = os.path.dirname(db_path)

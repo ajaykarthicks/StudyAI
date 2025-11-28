@@ -221,7 +221,19 @@ def extract_text_from_pdf_stream(pdf_bytes: bytes, groq_client=None, progress_ca
                     except Exception as ve:
                         print(f"[OCR] Gemini Vision failed: {ve}")
 
-                # Try EasyOCR (Better for handwriting than Tesseract)
+                # Try Tesseract (Lighter than EasyOCR)
+                if OCR_AVAILABLE and len(text.strip()) < 50:
+                    try:
+                        ocr_text = pytesseract.image_to_string(pil_image)
+                        if len(ocr_text.strip()) > 50: # If Tesseract found good text, use it
+                            text = ocr_text
+                            yield {"status": "progress", "message": f"Processing page {i+1}: Extracted text with Tesseract", "percent": current_progress}
+                            full_text.append(text)
+                            continue # Skip EasyOCR if Tesseract worked well
+                    except Exception as e:
+                        print(f"[OCR] Tesseract failed: {e}")
+
+                # Try EasyOCR (Heavy, use as last resort)
                 if ensure_easyocr():
                     try:
                         reader_inst = get_easyocr_reader()
@@ -245,15 +257,6 @@ def extract_text_from_pdf_stream(pdf_bytes: bytes, groq_client=None, progress_ca
                                 text = easy_text
                     except Exception as e:
                         print(f"[OCR] EasyOCR failed: {e}")
-
-                # Try Tesseract (Fallback)
-                if OCR_AVAILABLE and len(text.strip()) < 50:
-                    try:
-                        ocr_text = pytesseract.image_to_string(pil_image)
-                        if len(ocr_text.strip()) > len(text.strip()):
-                            text = ocr_text
-                    except Exception as e:
-                        print(f"[OCR] Tesseract failed: {e}")
             else:
                 print(f"[OCR] No image generated for page {i+1}, skipping OCR/Vision")
         else:

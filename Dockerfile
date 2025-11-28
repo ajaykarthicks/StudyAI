@@ -30,5 +30,5 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:5000/health || exit 1
 
-# Run the app with gunicorn (minimal workers for free tier, increased timeout)
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers=2", "--threads=2", "--worker-class=gthread", "--worker-tmp-dir=/dev/shm", "--max-requests=100", "--timeout=120", "app:app"]
+# Run the app with gunicorn (single worker for 512MB RAM limit, multiple threads for concurrency)
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers=1", "--threads=4", "--worker-class=gthread", "--worker-tmp-dir=/dev/shm", "--max-requests=50", "--timeout=120", "app:app"]
