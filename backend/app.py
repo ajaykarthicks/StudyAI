@@ -97,7 +97,7 @@ DRIVE_USER_MODE = os.getenv('DRIVE_USER_MODE', 'false').lower() == 'true'
 ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
 
 # Detect environment
-IS_PRODUCTION = os.getenv('RENDER') == 'true' or os.getenv('RAILWAY_PUBLIC_DOMAIN') is not None
+IS_PRODUCTION = os.getenv('RENDER') == 'true' or os.getenv('RAILWAY_PUBLIC_DOMAIN') is not None or os.getenv('SPACE_ID') is not None
 
 # Get frontend URL for CORS
 # Default to the user's Vercel URL
