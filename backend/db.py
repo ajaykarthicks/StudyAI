@@ -23,8 +23,11 @@ print("[Init] Applied global IPv4-only monkeypatch for socket.getaddrinfo")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///instance/studyai.db")
 
 # Fix for some Postgres providers (like Supabase/Heroku) using 'postgres://' instead of 'postgresql://'
-if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+if DATABASE_URL:
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+pg8000://", 1)
+    elif DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+pg8000://", 1)
 
 connect_args = {}
 
