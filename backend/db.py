@@ -6,6 +6,20 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import scoped_session, sessionmaker, declarative_base
 
+# --- MONKEYPATCH: Force IPv4 globally ---
+# This is required for Hugging Face Spaces + Supabase to avoid "Network is unreachable" (IPv6) errors.
+# It filters out all IPv6 addresses from DNS lookups.
+_original_getaddrinfo = socket.getaddrinfo
+
+def _patched_getaddrinfo(*args, **kwargs):
+    res = _original_getaddrinfo(*args, **kwargs)
+    # Filter results to only include AF_INET (IPv4)
+    return [r for r in res if r[0] == socket.AF_INET]
+
+socket.getaddrinfo = _patched_getaddrinfo
+print("[Init] Applied global IPv4-only monkeypatch for socket.getaddrinfo")
+# ----------------------------------------
+
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///instance/studyai.db")
 
 # Fix for some Postgres providers (like Supabase/Heroku) using 'postgres://' instead of 'postgresql://'
@@ -22,7 +36,7 @@ if DATABASE_URL.startswith("sqlite"):
     # SQLite needs this option when used with threads
     connect_args = {"check_same_thread": False}
 elif "supabase.co" in DATABASE_URL:
-    # Force IPv4 for Supabase to avoid "Network is unreachable" on IPv6-only environments
+    # Keep the explicit hostaddr logic as a backup/optimization
     try:
         # Robust hostname extraction to handle passwords with '@'
         # Split by the LAST '@' to separate credentials from host
