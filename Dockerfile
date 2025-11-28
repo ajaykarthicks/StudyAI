@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
+# Configure system to prefer IPv4 over IPv6 (Fixes "Network is unreachable" errors on Supabase)
+RUN echo "precedence ::ffff:0:0/96  100" >> /etc/gai.conf
+
 # Copy only requirements first (for better caching)
 COPY backend/requirements.txt .
 
