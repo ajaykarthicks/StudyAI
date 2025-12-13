@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.studyai.ajay",
+      "sha256_cert_fingerprints": [ED:20:44:F8:9B:08:68:85:47:D1:6D:90:CE:DA:91:BD:24:2C:9F:82:8D:D3:E7:50:29:0D:0E:C4:31:A8:B6:74]
+    }
+  }
+]
